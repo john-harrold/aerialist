@@ -1,0 +1,95 @@
+name: Nightly Build
+
+on:
+  schedule:
+    # Every day at 4:00 AM UTC
+    - cron: '0 4 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  build-dmg:
+    name: Build DMG
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
+
+      - name: Prepare Python bundle
+        run: |
+          brew install zstd
+          ./Scripts/prepare_python.sh
+
+      - name: Build app
+        run: |
+          xcodebuild build \
+            -project Aerialist/Aerialist.xcodeproj \
+            -scheme Aerialist \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Create DMG
+        run: |
+          APP_PATH="build/DerivedData/Build/Products/Release/Aerialist.app"
+
+          if [ ! -d "$APP_PATH" ]; then
+            echo "Error: Aerialist.app not found at $APP_PATH"
+            find build/DerivedData -name "Aerialist.app" -type d 2>/dev/null
+            exit 1
+          fi
+
+          # Create staging directory for DMG contents
+          DMG_DIR="build/dmg-staging"
+          mkdir -p "$DMG_DIR"
+          cp -R "$APP_PATH" "$DMG_DIR/"
+
+          # Create a symlink to /Applications for drag-install
+          ln -s /Applications "$DMG_DIR/Applications"
+
+          # Get version info
+          VERSION=$(date -u +"%Y.%m.%d")
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          DMG_NAME="Aerialist-nightly-${VERSION}-${SHORT_SHA}.dmg"
+
+          # Create DMG
+          hdiutil create \
+            -volname "Aerialist" \
+            -srcfolder "$DMG_DIR" \
+            -ov \
+            -format UDZO \
+            "build/${DMG_NAME}"
+
+          echo "DMG_NAME=${DMG_NAME}" >> "$GITHUB_ENV"
+          echo "DMG_PATH=build/${DMG_NAME}" >> "$GITHUB_ENV"
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.DMG_NAME }}
+          path: ${{ env.DMG_PATH }}
+          retention-days: 30
+
+      - name: Update nightly release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: Nightly Build
+          body: |
+            Automated nightly build from `main` branch.
+
+            **Commit:** ${{ github.sha }}
+            **Built:** ${{ github.event.repository.updated_at || github.event.head_commit.timestamp }}
+
+            > **Note:** This is an unsigned build. On first launch, right-click the app
+            > and select "Open" to bypass Gatekeeper, or go to System Settings >
+            > Privacy & Security to allow it.
+          prerelease: true
+          files: ${{ env.DMG_PATH }}
+          make_latest: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
