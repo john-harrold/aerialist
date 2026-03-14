@@ -1,5 +1,7 @@
 import SwiftUI
 import AppKit
+import CoreImage
+import CoreImage.CIFilterBuiltins
 import UniformTypeIdentifiers
 
 struct StampExtractorSheet: View {
@@ -7,6 +9,7 @@ struct StampExtractorSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var sourceImage: NSImage?
+    @State private var sourceCGImage: CGImage?
     @State private var processedImage: NSImage?
     @State private var brightness: Double = 0.0
     @State private var contrast: Double = 1.0
@@ -14,14 +17,19 @@ struct StampExtractorSheet: View {
     @State private var tintColor: Color = .black
     @State private var invertExtraction = false
     @State private var rotation: Double = 0.0
-    @State private var cropTop: Double = 0.0
-    @State private var cropBottom: Double = 0.0
-    @State private var cropLeft: Double = 0.0
-    @State private var cropRight: Double = 0.0
+
+    // Crop state — normalized 0...1 coordinates relative to displayed image
+    @State private var cropRect: CGRect? = nil
+    @State private var isCropped = false
+
+    // Debounce timer for slider changes
+    @State private var updateTask: Task<Void, Never>?
+
+    // Full-res processed cache (only built on export)
+    private static let ciContext = CIContext(options: [.useSoftwareRenderer: false])
 
     var body: some View {
         VStack(spacing: 0) {
-            // Title bar
             HStack {
                 Text("Extract Stamp from Image")
                     .font(.headline)
@@ -41,16 +49,6 @@ struct StampExtractorSheet: View {
         }
         .frame(minWidth: 750, minHeight: 550)
         .frame(idealWidth: 900, idealHeight: 600)
-        .onChange(of: brightness) { updatePreview() }
-        .onChange(of: contrast) { updatePreview() }
-        .onChange(of: threshold) { updatePreview() }
-        .onChange(of: tintColor) { updatePreview() }
-        .onChange(of: invertExtraction) { updatePreview() }
-        .onChange(of: rotation) { updatePreview() }
-        .onChange(of: cropTop) { updatePreview() }
-        .onChange(of: cropBottom) { updatePreview() }
-        .onChange(of: cropLeft) { updatePreview() }
-        .onChange(of: cropRight) { updatePreview() }
     }
 
     // MARK: - File Selection
@@ -80,64 +78,76 @@ struct StampExtractorSheet: View {
 
     private var editorView: some View {
         HSplitView {
-            // Preview with guide lines
-            VStack {
-                Text("Preview")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 8)
+            // Preview
+            VStack(spacing: 0) {
+                HStack {
+                    Text(isCropped ? "Preview (extracted)" : "Drag to select crop region")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if cropRect != nil && !isCropped {
+                        Button("Clear Selection") {
+                            cropRect = nil
+                        }
+                        .font(.caption)
+                        .buttonStyle(.borderless)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.top, 8)
 
                 GeometryReader { geo in
-                    let previewImage = processedImage ?? sourceImage!
-                    ZStack {
-                        CheckerboardView()
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-
-                        Image(nsImage: previewImage)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .padding(8)
-                            .overlay {
-                                // Guide lines when rotating
-                                if rotation != 0 {
-                                    guideLines
-                                }
+                    if isCropped, let preview = processedImage {
+                        // Show extracted result
+                        ZStack {
+                            CheckerboardView()
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                            Image(nsImage: preview)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .padding(8)
+                            if rotation != 0 {
+                                guideLines
                             }
+                        }
+                        .frame(width: geo.size.width, height: geo.size.height)
+                    } else if let src = sourceImage {
+                        // Show source with crop overlay
+                        CropOverlayView(
+                            image: src,
+                            cropRect: $cropRect,
+                            rotation: rotation
+                        )
+                        .frame(width: geo.size.width, height: geo.size.height)
                     }
-                    .frame(width: geo.size.width, height: geo.size.height)
                 }
             }
-            .frame(minWidth: 350)
+            .frame(minWidth: 400)
 
             // Controls
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    // Crop section
-                    cropControls
+                    // Crop button
+                    cropSection
 
                     Divider()
 
-                    // Rotate section
                     rotateControls
 
                     Divider()
 
-                    // Extraction section
                     extractionControls
 
                     Divider()
 
-                    // Adjustments section
                     adjustmentControls
 
                     Divider()
 
-                    // Color section
                     colorControls
 
                     Divider()
 
-                    // Actions
                     actionButtons
                 }
                 .padding()
@@ -146,53 +156,55 @@ struct StampExtractorSheet: View {
         }
     }
 
-    // MARK: - Guide Lines Overlay
+    // MARK: - Guide Lines
 
     private var guideLines: some View {
         GeometryReader { geo in
             let midX = geo.size.width / 2
             let midY = geo.size.height / 2
-
             ZStack {
-                // Horizontal guide
-                Path { path in
-                    path.move(to: CGPoint(x: 0, y: midY))
-                    path.addLine(to: CGPoint(x: geo.size.width, y: midY))
-                }
-                .stroke(Color.blue.opacity(0.5), style: StrokeStyle(lineWidth: 0.5, dash: [4, 4]))
-
-                // Vertical guide
-                Path { path in
-                    path.move(to: CGPoint(x: midX, y: 0))
-                    path.addLine(to: CGPoint(x: midX, y: geo.size.height))
-                }
-                .stroke(Color.blue.opacity(0.5), style: StrokeStyle(lineWidth: 0.5, dash: [4, 4]))
+                Path { p in p.move(to: CGPoint(x: 0, y: midY)); p.addLine(to: CGPoint(x: geo.size.width, y: midY)) }
+                    .stroke(Color.blue.opacity(0.5), style: StrokeStyle(lineWidth: 0.5, dash: [4, 4]))
+                Path { p in p.move(to: CGPoint(x: midX, y: 0)); p.addLine(to: CGPoint(x: midX, y: geo.size.height)) }
+                    .stroke(Color.blue.opacity(0.5), style: StrokeStyle(lineWidth: 0.5, dash: [4, 4]))
             }
         }
     }
 
     // MARK: - Control Sections
 
-    private var cropControls: some View {
+    private var cropSection: some View {
         Group {
             Text("Crop")
                 .font(.subheadline.bold())
 
-            VStack(spacing: 4) {
-                sliderRow("Top", value: $cropTop, range: 0...50, format: "%.0f%%", multiplier: 1)
-                sliderRow("Bottom", value: $cropBottom, range: 0...50, format: "%.0f%%", multiplier: 1)
-                sliderRow("Left", value: $cropLeft, range: 0...50, format: "%.0f%%", multiplier: 1)
-                sliderRow("Right", value: $cropRight, range: 0...50, format: "%.0f%%", multiplier: 1)
-            }
+            if isCropped {
+                HStack {
+                    Button("Undo Crop") {
+                        isCropped = false
+                        cropRect = nil
+                        scheduleUpdate()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
 
-            HStack {
-                Button("Reset Crop") {
-                    cropTop = 0; cropBottom = 0; cropLeft = 0; cropRight = 0
+                    Text("Crop applied")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                .font(.caption)
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(cropTop == 0 && cropBottom == 0 && cropLeft == 0 && cropRight == 0)
+            } else {
+                HStack {
+                    Button("Crop") {
+                        applyCrop()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .disabled(cropRect == nil)
+
+                    Text(cropRect == nil ? "Drag on the image to select a region" : "Adjust handles, then click Crop")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }
@@ -207,6 +219,7 @@ struct StampExtractorSheet: View {
                     Text("Angle")
                         .frame(width: 70, alignment: .leading)
                     Slider(value: $rotation, in: -180...180, step: 0.5)
+                        .onChange(of: rotation) { if isCropped { scheduleUpdate() } }
                     Text(String(format: "%.1f\u{00B0}", rotation))
                         .frame(width: 45, alignment: .trailing)
                         .monospacedDigit()
@@ -217,15 +230,15 @@ struct StampExtractorSheet: View {
             }
 
             HStack(spacing: 8) {
-                Button("-90\u{00B0}") { rotation = max(-180, rotation - 90) }
+                Button("-90\u{00B0}") { rotation = max(-180, rotation - 90); if isCropped { scheduleUpdate() } }
                     .buttonStyle(.bordered).controlSize(.small)
-                Button("-1\u{00B0}") { rotation = max(-180, rotation - 1) }
+                Button("-1\u{00B0}") { rotation = max(-180, rotation - 1); if isCropped { scheduleUpdate() } }
                     .buttonStyle(.bordered).controlSize(.small)
-                Button("0\u{00B0}") { rotation = 0 }
+                Button("0\u{00B0}") { rotation = 0; if isCropped { scheduleUpdate() } }
                     .buttonStyle(.bordered).controlSize(.small)
-                Button("+1\u{00B0}") { rotation = min(180, rotation + 1) }
+                Button("+1\u{00B0}") { rotation = min(180, rotation + 1); if isCropped { scheduleUpdate() } }
                     .buttonStyle(.bordered).controlSize(.small)
-                Button("+90\u{00B0}") { rotation = min(180, rotation + 90) }
+                Button("+90\u{00B0}") { rotation = min(180, rotation + 90); if isCropped { scheduleUpdate() } }
                     .buttonStyle(.bordered).controlSize(.small)
             }
             .font(.caption)
@@ -242,6 +255,7 @@ struct StampExtractorSheet: View {
                     Text("Threshold")
                         .frame(width: 70, alignment: .leading)
                     Slider(value: $threshold, in: 0.05...0.95, step: 0.01)
+                        .onChange(of: threshold) { scheduleUpdate() }
                     Text(String(format: "%.0f%%", threshold * 100))
                         .frame(width: 40, alignment: .trailing)
                         .monospacedDigit()
@@ -253,6 +267,7 @@ struct StampExtractorSheet: View {
 
             Toggle("Invert (extract light content from dark background)", isOn: $invertExtraction)
                 .font(.caption)
+                .onChange(of: invertExtraction) { scheduleUpdate() }
         }
     }
 
@@ -262,7 +277,9 @@ struct StampExtractorSheet: View {
                 .font(.subheadline.bold())
 
             sliderRow("Brightness", value: $brightness, range: -0.5...0.5, format: "%+.0f%%", multiplier: 100)
+                .onChange(of: brightness) { scheduleUpdate() }
             sliderRow("Contrast", value: $contrast, range: 0.2...3.0, format: "%.1fx", multiplier: 1)
+                .onChange(of: contrast) { scheduleUpdate() }
         }
     }
 
@@ -276,6 +293,7 @@ struct StampExtractorSheet: View {
                     .frame(width: 70, alignment: .leading)
                 ColorPicker("", selection: $tintColor, supportsOpacity: false)
                     .labelsHidden()
+                    .onChange(of: tintColor) { scheduleUpdate() }
                 ForEach(presetColors, id: \.name) { preset in
                     Button {
                         tintColor = preset.color
@@ -313,8 +331,6 @@ struct StampExtractorSheet: View {
             .disabled(processedImage == nil)
         }
     }
-
-    // MARK: - Helpers
 
     private func sliderRow(_ label: String, value: Binding<Double>, range: ClosedRange<Double>, format: String, multiplier: Double) -> some View {
         HStack {
@@ -364,187 +380,404 @@ struct StampExtractorSheet: View {
             guard response == .OK, let url = panel.url else { return }
             guard let image = NSImage(contentsOf: url) else { return }
             sourceImage = image
-            // Reset crop and rotation for new image
-            cropTop = 0; cropBottom = 0; cropLeft = 0; cropRight = 0
+            if let tiff = image.tiffRepresentation,
+               let bmp = NSBitmapImageRep(data: tiff) {
+                sourceCGImage = bmp.cgImage
+            }
+            cropRect = nil
+            isCropped = false
             rotation = 0
+            processedImage = nil
+        }
+    }
+
+    // MARK: - Crop
+
+    private func applyCrop() {
+        guard let cropR = cropRect, let cg = sourceCGImage else { return }
+        let w = CGFloat(cg.width)
+        let h = CGFloat(cg.height)
+
+        let pixelRect = CGRect(
+            x: cropR.origin.x * w,
+            y: cropR.origin.y * h,
+            width: cropR.width * w,
+            height: cropR.height * h
+        ).integral
+
+        guard pixelRect.width > 0, pixelRect.height > 0,
+              let cropped = cg.cropping(to: pixelRect) else { return }
+
+        sourceCGImage = cropped
+        sourceImage = NSImage(cgImage: cropped, size: NSSize(width: cropped.width, height: cropped.height))
+        cropRect = nil
+        isCropped = true
+        scheduleUpdate()
+    }
+
+    // MARK: - Debounced Update
+
+    private func scheduleUpdate() {
+        updateTask?.cancel()
+        updateTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(50))
+            guard !Task.isCancelled else { return }
             updatePreview()
         }
     }
 
-    // MARK: - Image Processing
+    // MARK: - Image Processing (Core Image accelerated)
 
     private func updatePreview() {
-        guard let source = sourceImage else { return }
-        processedImage = extractStamp(from: source)
+        guard let cg = sourceCGImage else { return }
+        // Use a downscaled version for preview (max 1200px)
+        let maxPreview = 1200
+        let scale: CGFloat
+        if cg.width > maxPreview || cg.height > maxPreview {
+            scale = CGFloat(maxPreview) / CGFloat(max(cg.width, cg.height))
+        } else {
+            scale = 1.0
+        }
+        processedImage = processImage(cg, scale: scale)
     }
 
-    private func extractStamp(from image: NSImage) -> NSImage? {
-        guard let tiffData = image.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiffData),
-              let cgImage = bitmap.cgImage else { return nil }
+    private func processImage(_ cgImage: CGImage, scale: CGFloat) -> NSImage? {
+        var ci = CIImage(cgImage: cgImage)
 
-        let srcWidth = cgImage.width
-        let srcHeight = cgImage.height
-
-        // Apply crop
-        let cropXMin = Int(Double(srcWidth) * cropLeft / 100.0)
-        let cropXMax = srcWidth - Int(Double(srcWidth) * cropRight / 100.0)
-        let cropYMin = Int(Double(srcHeight) * cropTop / 100.0)
-        let cropYMax = srcHeight - Int(Double(srcHeight) * cropBottom / 100.0)
-
-        let cropW = max(1, cropXMax - cropXMin)
-        let cropH = max(1, cropYMax - cropYMin)
-        let cropRect = CGRect(x: cropXMin, y: cropYMin, width: cropW, height: cropH)
-
-        guard let croppedCG = cgImage.cropping(to: cropRect) else { return nil }
-
-        // Apply rotation
-        let radians = CGFloat(rotation) * .pi / 180.0
-        let rotatedImage: CGImage
-        if rotation == 0 {
-            rotatedImage = croppedCG
-        } else {
-            guard let img = rotateImage(croppedCG, radians: radians) else { return nil }
-            rotatedImage = img
+        // Scale for preview
+        if scale < 1.0 {
+            ci = ci.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
         }
 
-        let width = rotatedImage.width
-        let height = rotatedImage.height
+        // Rotation
+        if rotation != 0 {
+            let radians = CGFloat(rotation) * .pi / 180.0
+            ci = ci.transformed(by: CGAffineTransform(rotationAngle: radians))
+            // Shift origin so the image is in positive coordinates
+            ci = ci.transformed(by: CGAffineTransform(translationX: -ci.extent.origin.x, y: -ci.extent.origin.y))
+        }
 
-        guard let context = CGContext(
-            data: nil,
-            width: width,
-            height: height,
-            bitsPerComponent: 8,
-            bytesPerRow: width * 4,
+        // Brightness and contrast via CIColorControls (GPU-accelerated)
+        let colorControls = CIFilter.colorControls()
+        colorControls.inputImage = ci
+        colorControls.brightness = Float(brightness)
+        colorControls.contrast = Float(contrast)
+        colorControls.saturation = 1.0
+        guard let adjusted = colorControls.outputImage else { return nil }
+
+        // Render the adjusted image to get pixels for threshold/tint
+        let extent = adjusted.extent
+        let w = Int(extent.width)
+        let h = Int(extent.height)
+        guard w > 0, h > 0 else { return nil }
+
+        guard let output = Self.ciContext.createCGImage(adjusted, from: extent) else { return nil }
+
+        // Apply threshold + tint using pixel buffer
+        guard let ctx = CGContext(
+            data: nil, width: w, height: h,
+            bitsPerComponent: 8, bytesPerRow: w * 4,
             space: CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return nil }
 
-        context.draw(rotatedImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        ctx.draw(output, in: CGRect(x: 0, y: 0, width: w, height: h))
+        guard let data = ctx.data else { return nil }
+        let pixels = data.assumingMemoryBound(to: UInt8.self)
 
-        guard let data = context.data else { return nil }
-        let pixels = data.bindMemory(to: UInt8.self, capacity: width * height * 4)
-
-        // Get tint color components
         let nsColor = NSColor(tintColor).usingColorSpace(.sRGB) ?? NSColor(tintColor)
-        let tintR = UInt8(clamping: Int(nsColor.redComponent * 255))
-        let tintG = UInt8(clamping: Int(nsColor.greenComponent * 255))
-        let tintB = UInt8(clamping: Int(nsColor.blueComponent * 255))
+        let tR = UInt8(clamping: Int(nsColor.redComponent * 255))
+        let tG = UInt8(clamping: Int(nsColor.greenComponent * 255))
+        let tB = UInt8(clamping: Int(nsColor.blueComponent * 255))
+        let threshF = Float(threshold)
+        let inv = invertExtraction
+        let count = w * h
 
-        let contrastF = Float(contrast)
-        let brightnessF = Float(brightness)
-        let thresholdF = Float(threshold)
-
-        for i in 0..<(width * height) {
-            let offset = i * 4
-            let srcAlpha = Float(pixels[offset + 3]) / 255.0
-
-            // Skip fully transparent pixels (from rotation)
-            if srcAlpha < 0.01 {
-                pixels[offset] = 0
-                pixels[offset + 1] = 0
-                pixels[offset + 2] = 0
-                pixels[offset + 3] = 0
+        // Process in bulk — this loop is simple arithmetic, very fast on modern CPUs
+        for i in 0..<count {
+            let o = i &* 4
+            let a = pixels[o + 3]
+            if a < 3 { // transparent (from rotation)
+                pixels[o] = 0; pixels[o+1] = 0; pixels[o+2] = 0; pixels[o+3] = 0
                 continue
             }
 
-            var r = Float(pixels[offset]) / 255.0
-            var g = Float(pixels[offset + 1]) / 255.0
-            var b = Float(pixels[offset + 2]) / 255.0
-
-            // Un-premultiply if needed
-            if srcAlpha > 0 && srcAlpha < 1 {
-                r /= srcAlpha; g /= srcAlpha; b /= srcAlpha
-                r = min(1, r); g = min(1, g); b = min(1, b)
-            }
-
-            // Apply brightness and contrast
-            r = (r - 0.5) * contrastF + 0.5 + brightnessF
-            g = (g - 0.5) * contrastF + 0.5 + brightnessF
-            b = (b - 0.5) * contrastF + 0.5 + brightnessF
-
-            r = min(1, max(0, r))
-            g = min(1, max(0, g))
-            b = min(1, max(0, b))
-
-            // Compute luminance
+            let r = Float(pixels[o]) / 255.0
+            let g = Float(pixels[o+1]) / 255.0
+            let b = Float(pixels[o+2]) / 255.0
             let lum = 0.299 * r + 0.587 * g + 0.114 * b
 
-            // Determine foreground vs background
-            let isForeground: Bool
-            if invertExtraction {
-                isForeground = lum > thresholdF
-            } else {
-                isForeground = lum < thresholdF
-            }
+            let fg = inv ? (lum > threshF) : (lum < threshF)
 
-            if isForeground {
-                let distance: Float
-                if invertExtraction {
-                    distance = (lum - thresholdF) / (1.0 - thresholdF + 0.001)
-                } else {
-                    distance = (thresholdF - lum) / (thresholdF + 0.001)
-                }
-                let alpha = min(1.0, max(0.0, distance * 2.0)) * srcAlpha
-
-                pixels[offset] = tintR
-                pixels[offset + 1] = tintG
-                pixels[offset + 2] = tintB
-                pixels[offset + 3] = UInt8(alpha * 255)
+            if fg {
+                let dist = inv
+                    ? (lum - threshF) / (1.0 - threshF + 0.001)
+                    : (threshF - lum) / (threshF + 0.001)
+                let alpha = min(1.0, max(0.0, dist * 2.0))
+                pixels[o] = tR; pixels[o+1] = tG; pixels[o+2] = tB
+                pixels[o+3] = UInt8(alpha * 255)
             } else {
-                pixels[offset] = 0
-                pixels[offset + 1] = 0
-                pixels[offset + 2] = 0
-                pixels[offset + 3] = 0
+                pixels[o] = 0; pixels[o+1] = 0; pixels[o+2] = 0; pixels[o+3] = 0
             }
         }
 
-        guard let outputCG = context.makeImage() else { return nil }
-        return NSImage(cgImage: outputCG, size: NSSize(width: width, height: height))
-    }
-
-    /// Rotate a CGImage by the given radians, expanding the canvas to fit.
-    private func rotateImage(_ image: CGImage, radians: CGFloat) -> CGImage? {
-        let w = CGFloat(image.width)
-        let h = CGFloat(image.height)
-
-        // Compute rotated bounding box
-        let sinA = abs(sin(radians))
-        let cosA = abs(cos(radians))
-        let newW = Int(ceil(w * cosA + h * sinA))
-        let newH = Int(ceil(w * sinA + h * cosA))
-
-        guard let context = CGContext(
-            data: nil,
-            width: newW,
-            height: newH,
-            bitsPerComponent: 8,
-            bytesPerRow: newW * 4,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else { return nil }
-
-        // Clear to transparent
-        context.clear(CGRect(x: 0, y: 0, width: newW, height: newH))
-
-        // Move origin to center, rotate, then draw centered
-        context.translateBy(x: CGFloat(newW) / 2, y: CGFloat(newH) / 2)
-        context.rotate(by: radians)
-        context.draw(image, in: CGRect(x: -w / 2, y: -h / 2, width: w, height: h))
-
-        return context.makeImage()
+        guard let finalCG = ctx.makeImage() else { return nil }
+        return NSImage(cgImage: finalCG, size: NSSize(width: w, height: h))
     }
 
     // MARK: - Add to Library
 
     private func addToLibrary() {
-        guard let image = processedImage else { return }
-        guard let tiffData = image.tiffRepresentation,
+        guard let cg = sourceCGImage else { return }
+        // Process at full resolution for export
+        guard let fullRes = processImage(cg, scale: 1.0) else { return }
+        guard let tiffData = fullRes.tiffRepresentation,
               let bitmap = NSBitmapImageRep(data: tiffData),
               let pngData = bitmap.representation(using: .png, properties: [:]) else { return }
         onExtracted(pngData)
         dismiss()
+    }
+}
+
+// MARK: - Crop Overlay View
+
+private struct CropOverlayView: View {
+    let image: NSImage
+    @Binding var cropRect: CGRect? // normalized 0...1
+    var rotation: Double
+
+    @State private var dragStart: CGPoint?
+    @State private var activeHandle: CropHandle?
+
+    private let handleSize: CGFloat = 10
+
+    enum CropHandle {
+        case topLeft, topRight, bottomLeft, bottomRight
+        case top, bottom, left, right
+        case move
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let imageSize = image.size
+            let viewSize = geo.size
+            let fitted = fitRect(imageSize: imageSize, viewSize: viewSize)
+
+            ZStack {
+                // Image
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .rotationEffect(.degrees(rotation))
+
+                // Crop overlay
+                if let crop = cropRect {
+                    let rect = denormalize(crop, in: fitted)
+
+                    // Dimming outside crop
+                    CropDimmingOverlay(cropRect: rect, bounds: fitted)
+
+                    // Crop border
+                    Rectangle()
+                        .strokeBorder(Color.white, lineWidth: 1.5)
+                        .frame(width: rect.width, height: rect.height)
+                        .position(x: rect.midX, y: rect.midY)
+                        .shadow(color: .black.opacity(0.5), radius: 1)
+
+                    // Rule of thirds
+                    ruleOfThirds(rect)
+
+                    // Handles
+                    ForEach(handlePositions(rect), id: \.handle) { hp in
+                        Circle()
+                            .fill(.white)
+                            .frame(width: handleSize, height: handleSize)
+                            .shadow(color: .black.opacity(0.4), radius: 1)
+                            .position(hp.point)
+                    }
+                }
+            }
+            .frame(width: viewSize.width, height: viewSize.height)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 1)
+                    .onChanged { value in
+                        onDrag(value: value, fitted: fitted)
+                    }
+                    .onEnded { _ in
+                        dragStart = nil
+                        activeHandle = nil
+                    }
+            )
+        }
+    }
+
+    private func ruleOfThirds(_ rect: CGRect) -> some View {
+        ZStack {
+            ForEach(1..<3, id: \.self) { i in
+                let y = rect.minY + rect.height * CGFloat(i) / 3
+                Path { p in p.move(to: CGPoint(x: rect.minX, y: y)); p.addLine(to: CGPoint(x: rect.maxX, y: y)) }
+                    .stroke(Color.white.opacity(0.3), lineWidth: 0.5)
+                let x = rect.minX + rect.width * CGFloat(i) / 3
+                Path { p in p.move(to: CGPoint(x: x, y: rect.minY)); p.addLine(to: CGPoint(x: x, y: rect.maxY)) }
+                    .stroke(Color.white.opacity(0.3), lineWidth: 0.5)
+            }
+        }
+    }
+
+    private struct HandlePosition: Identifiable {
+        var id: String { "\(handle)" }
+        let handle: CropHandle
+        let point: CGPoint
+    }
+
+    private func handlePositions(_ rect: CGRect) -> [HandlePosition] {
+        [
+            HandlePosition(handle: .topLeft, point: CGPoint(x: rect.minX, y: rect.minY)),
+            HandlePosition(handle: .topRight, point: CGPoint(x: rect.maxX, y: rect.minY)),
+            HandlePosition(handle: .bottomLeft, point: CGPoint(x: rect.minX, y: rect.maxY)),
+            HandlePosition(handle: .bottomRight, point: CGPoint(x: rect.maxX, y: rect.maxY)),
+            HandlePosition(handle: .top, point: CGPoint(x: rect.midX, y: rect.minY)),
+            HandlePosition(handle: .bottom, point: CGPoint(x: rect.midX, y: rect.maxY)),
+            HandlePosition(handle: .left, point: CGPoint(x: rect.minX, y: rect.midY)),
+            HandlePosition(handle: .right, point: CGPoint(x: rect.maxX, y: rect.midY)),
+        ]
+    }
+
+    // MARK: - Drag Handling
+
+    private func onDrag(value: DragGesture.Value, fitted: CGRect) {
+        let loc = value.location
+
+        if dragStart == nil {
+            dragStart = value.startLocation
+
+            // Check if starting on a handle or inside crop
+            if let crop = cropRect {
+                let rect = denormalize(crop, in: fitted)
+                activeHandle = hitTestHandle(value.startLocation, rect: rect)
+                    ?? (rect.contains(value.startLocation) ? .move : nil)
+            }
+
+            if activeHandle == nil {
+                // Start new crop
+                let start = clampToFitted(value.startLocation, fitted: fitted)
+                let norm = normalize(CGRect(origin: start, size: .zero), in: fitted)
+                cropRect = norm
+                activeHandle = .bottomRight
+            }
+        }
+
+        guard let handle = activeHandle else { return }
+        let clamped = clampToFitted(loc, fitted: fitted)
+
+        guard var crop = cropRect else { return }
+        var rect = denormalize(crop, in: fitted)
+
+        switch handle {
+        case .topLeft:
+            rect = CGRect(x: clamped.x, y: clamped.y, width: rect.maxX - clamped.x, height: rect.maxY - clamped.y)
+        case .topRight:
+            rect = CGRect(x: rect.minX, y: clamped.y, width: clamped.x - rect.minX, height: rect.maxY - clamped.y)
+        case .bottomLeft:
+            rect = CGRect(x: clamped.x, y: rect.minY, width: rect.maxX - clamped.x, height: clamped.y - rect.minY)
+        case .bottomRight:
+            rect = CGRect(x: rect.minX, y: rect.minY, width: clamped.x - rect.minX, height: clamped.y - rect.minY)
+        case .top:
+            rect = CGRect(x: rect.minX, y: clamped.y, width: rect.width, height: rect.maxY - clamped.y)
+        case .bottom:
+            rect = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: clamped.y - rect.minY)
+        case .left:
+            rect = CGRect(x: clamped.x, y: rect.minY, width: rect.maxX - clamped.x, height: rect.height)
+        case .right:
+            rect = CGRect(x: rect.minX, y: rect.minY, width: clamped.x - rect.minX, height: rect.height)
+        case .move:
+            let dx = loc.x - (dragStart?.x ?? loc.x)
+            let dy = loc.y - (dragStart?.y ?? loc.y)
+            var moved = rect.offsetBy(dx: dx, dy: dy)
+            // Clamp to fitted area
+            moved.origin.x = max(fitted.minX, min(fitted.maxX - moved.width, moved.origin.x))
+            moved.origin.y = max(fitted.minY, min(fitted.maxY - moved.height, moved.origin.y))
+            rect = moved
+            dragStart = loc
+        }
+
+        // Normalize (handle negative width/height from inverted drag)
+        crop = normalize(rect.standardized, in: fitted)
+        crop = CGRect(
+            x: max(0, min(1, crop.origin.x)),
+            y: max(0, min(1, crop.origin.y)),
+            width: max(0.01, min(1 - crop.origin.x, crop.width)),
+            height: max(0.01, min(1 - crop.origin.y, crop.height))
+        )
+        cropRect = crop
+    }
+
+    private func hitTestHandle(_ point: CGPoint, rect: CGRect) -> CropHandle? {
+        let margin: CGFloat = 12
+        for hp in handlePositions(rect) {
+            if abs(point.x - hp.point.x) < margin && abs(point.y - hp.point.y) < margin {
+                return hp.handle
+            }
+        }
+        return nil
+    }
+
+    // MARK: - Coordinate Helpers
+
+    private func fitRect(imageSize: NSSize, viewSize: CGSize) -> CGRect {
+        let scaleX = viewSize.width / imageSize.width
+        let scaleY = viewSize.height / imageSize.height
+        let scale = min(scaleX, scaleY)
+        let w = imageSize.width * scale
+        let h = imageSize.height * scale
+        return CGRect(
+            x: (viewSize.width - w) / 2,
+            y: (viewSize.height - h) / 2,
+            width: w,
+            height: h
+        )
+    }
+
+    private func normalize(_ rect: CGRect, in fitted: CGRect) -> CGRect {
+        CGRect(
+            x: (rect.origin.x - fitted.origin.x) / fitted.width,
+            y: (rect.origin.y - fitted.origin.y) / fitted.height,
+            width: rect.width / fitted.width,
+            height: rect.height / fitted.height
+        )
+    }
+
+    private func denormalize(_ norm: CGRect, in fitted: CGRect) -> CGRect {
+        CGRect(
+            x: fitted.origin.x + norm.origin.x * fitted.width,
+            y: fitted.origin.y + norm.origin.y * fitted.height,
+            width: norm.width * fitted.width,
+            height: norm.height * fitted.height
+        )
+    }
+
+    private func clampToFitted(_ point: CGPoint, fitted: CGRect) -> CGPoint {
+        CGPoint(
+            x: max(fitted.minX, min(fitted.maxX, point.x)),
+            y: max(fitted.minY, min(fitted.maxY, point.y))
+        )
+    }
+}
+
+// MARK: - Crop Dimming Overlay
+
+private struct CropDimmingOverlay: View {
+    let cropRect: CGRect
+    let bounds: CGRect
+
+    var body: some View {
+        Canvas { context, size in
+            var path = Path()
+            path.addRect(bounds)
+            path.addRect(cropRect)
+            context.fill(path, with: .color(.black.opacity(0.4)), style: FillStyle(eoFill: true))
+        }
     }
 }
 
