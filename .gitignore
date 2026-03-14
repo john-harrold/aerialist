@@ -1,0 +1,23 @@
+# Build artifacts
+.build/
+DerivedData/
+build/
+
+# Bundled Python runtime (large, built by Scripts/)
+Aerialist/Aerialist/Resources/python/
+
+# Xcode
+*.xcuserdata
+xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+
+# macOS
+.DS_Store
+*.swp
+*~
+
+# Claude Code
+.claude/
+CLAUDE.md
