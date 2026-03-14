@@ -38,7 +38,7 @@ struct StampToolbar: View {
             Button {
                 showExtractor = true
             } label: {
-                Label("Extract Stamp...", systemImage: "signature")
+                Label("Extract Stamp...", systemImage: "wand.and.stars.inverse")
                     .labelStyle(.iconOnly)
             }
             .buttonStyle(.bordered)

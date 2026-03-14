@@ -116,7 +116,7 @@ struct StampExtractorSheet: View {
                         CropOverlayView(
                             image: src,
                             cropRect: $cropRect,
-                            rotation: rotation
+                            rotation: $rotation
                         )
                         .frame(width: geo.size.width, height: geo.size.height)
                     }
@@ -544,17 +544,20 @@ struct StampExtractorSheet: View {
 private struct CropOverlayView: View {
     let image: NSImage
     @Binding var cropRect: CGRect? // normalized 0...1
-    var rotation: Double
+    @Binding var rotation: Double
 
     @State private var dragStart: CGPoint?
     @State private var activeHandle: CropHandle?
+    @State private var rotationAtDragStart: Double = 0
 
     private let handleSize: CGFloat = 10
+    private let rotateHandleDistance: CGFloat = 30
 
     enum CropHandle {
         case topLeft, topRight, bottomLeft, bottomRight
         case top, bottom, left, right
         case move
+        case rotate
     }
 
     var body: some View {
@@ -594,6 +597,37 @@ private struct CropOverlayView: View {
                             .frame(width: handleSize, height: handleSize)
                             .shadow(color: .black.opacity(0.4), radius: 1)
                             .position(hp.point)
+                    }
+
+                    // Rotation handle — green circle above top center with dashed line
+                    let rotHandlePos = CGPoint(x: rect.midX, y: rect.minY - rotateHandleDistance)
+                    Path { p in
+                        p.move(to: CGPoint(x: rect.midX, y: rect.minY))
+                        p.addLine(to: rotHandlePos)
+                    }
+                    .stroke(Color.green.opacity(0.7), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+
+                    Circle()
+                        .fill(Color.green)
+                        .frame(width: handleSize + 2, height: handleSize + 2)
+                        .shadow(color: .black.opacity(0.4), radius: 1)
+                        .position(rotHandlePos)
+
+                    // Guide lines when rotating
+                    if rotation != 0 {
+                        // Horizontal guide through center
+                        Path { p in
+                            p.move(to: CGPoint(x: fitted.minX, y: rect.midY))
+                            p.addLine(to: CGPoint(x: fitted.maxX, y: rect.midY))
+                        }
+                        .stroke(Color.blue.opacity(0.4), style: StrokeStyle(lineWidth: 0.5, dash: [4, 4]))
+
+                        // Vertical guide through center
+                        Path { p in
+                            p.move(to: CGPoint(x: rect.midX, y: fitted.minY))
+                            p.addLine(to: CGPoint(x: rect.midX, y: fitted.maxY))
+                        }
+                        .stroke(Color.blue.opacity(0.4), style: StrokeStyle(lineWidth: 0.5, dash: [4, 4]))
                     }
                 }
             }
@@ -651,6 +685,7 @@ private struct CropOverlayView: View {
 
         if dragStart == nil {
             dragStart = value.startLocation
+            rotationAtDragStart = rotation
 
             // Check if starting on a handle or inside crop
             if let crop = cropRect {
@@ -669,6 +704,19 @@ private struct CropOverlayView: View {
         }
 
         guard let handle = activeHandle else { return }
+
+        // Handle rotation separately — computes angle from crop center to mouse
+        if handle == .rotate {
+            guard let crop = cropRect else { return }
+            let rect = denormalize(crop, in: fitted)
+            let center = CGPoint(x: rect.midX, y: rect.midY)
+            let angle = atan2(loc.x - center.x, center.y - loc.y) * 180.0 / .pi
+            // Snap to 0 when close
+            let snapped = abs(angle) < 2 ? 0.0 : angle
+            rotation = max(-180, min(180, snapped))
+            return
+        }
+
         let clamped = clampToFitted(loc, fitted: fitted)
 
         guard var crop = cropRect else { return }
@@ -695,11 +743,12 @@ private struct CropOverlayView: View {
             let dx = loc.x - (dragStart?.x ?? loc.x)
             let dy = loc.y - (dragStart?.y ?? loc.y)
             var moved = rect.offsetBy(dx: dx, dy: dy)
-            // Clamp to fitted area
             moved.origin.x = max(fitted.minX, min(fitted.maxX - moved.width, moved.origin.x))
             moved.origin.y = max(fitted.minY, min(fitted.maxY - moved.height, moved.origin.y))
             rect = moved
             dragStart = loc
+        case .rotate:
+            break // handled above
         }
 
         // Normalize (handle negative width/height from inverted drag)
@@ -715,6 +764,13 @@ private struct CropOverlayView: View {
 
     private func hitTestHandle(_ point: CGPoint, rect: CGRect) -> CropHandle? {
         let margin: CGFloat = 12
+
+        // Check rotation handle first (it's above the crop rect)
+        let rotPos = CGPoint(x: rect.midX, y: rect.minY - rotateHandleDistance)
+        if abs(point.x - rotPos.x) < margin && abs(point.y - rotPos.y) < margin {
+            return .rotate
+        }
+
         for hp in handlePositions(rect) {
             if abs(point.x - hp.point.x) < margin && abs(point.y - hp.point.y) < margin {
                 return hp.handle

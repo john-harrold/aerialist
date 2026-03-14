@@ -19,7 +19,7 @@ enum ToolMode: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .select: return "cursorarrow"
-        case .stamp: return "photo"
+        case .stamp: return "signature"
         case .textBox: return "textbox"
         case .comment: return "text.bubble"
         case .draw: return "pencil.and.outline"
