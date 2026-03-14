@@ -90,6 +90,7 @@
 		B10000000000000000000062 /* HelpView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000062 /* HelpView.swift */; };
 		B10000000000000000000063 /* BoxSelectService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000063 /* BoxSelectService.swift */; };
 		B10000000000000000000064 /* BoxSelectionAnnotation.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000064 /* BoxSelectionAnnotation.swift */; };
+		B10000000000000000000065 /* StampExtractorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000065 /* StampExtractorSheet.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -176,6 +177,7 @@
 		F10000000000000000000062 /* HelpView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelpView.swift; sourceTree = "<group>"; };
 		F10000000000000000000063 /* BoxSelectService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoxSelectService.swift; sourceTree = "<group>"; };
 		F10000000000000000000064 /* BoxSelectionAnnotation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoxSelectionAnnotation.swift; sourceTree = "<group>"; };
+		F10000000000000000000065 /* StampExtractorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StampExtractorSheet.swift; sourceTree = "<group>"; };
 		E10000000000000000000001 /* Aerialist.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Aerialist.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E10000000000000000000002 /* AerialistTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AerialistTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E10000000000000000000003 /* AerialistCLI */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = AerialistCLI; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -389,6 +391,7 @@
 				F10000000000000000000034 /* ExportProgressSheet.swift */,
 				F10000000000000000000035 /* TablePreviewSheet.swift */,
 				F10000000000000000000060 /* TableGridOverlayView.swift */,
+				F10000000000000000000065 /* StampExtractorSheet.swift */,
 			);
 			path = Sheets;
 			sourceTree = "<group>";
@@ -628,6 +631,7 @@
 				B10000000000000000000062 /* HelpView.swift in Sources */,
 				B10000000000000000000063 /* BoxSelectService.swift in Sources */,
 				B10000000000000000000064 /* BoxSelectionAnnotation.swift in Sources */,
+				B10000000000000000000065 /* StampExtractorSheet.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

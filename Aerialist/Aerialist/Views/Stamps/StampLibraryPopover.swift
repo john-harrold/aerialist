@@ -5,6 +5,7 @@ struct StampToolbar: View {
     var stampLibrary: StampLibrary
     @Binding var selectedStampID: UUID?
     var onStampSelected: (Data) -> Void
+    @State private var showExtractor = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -34,11 +35,25 @@ struct StampToolbar: View {
             .buttonStyle(.bordered)
             .help("Add stamp from PNG or PDF file")
 
+            Button {
+                showExtractor = true
+            } label: {
+                Label("Extract Stamp...", systemImage: "wand.and.stars")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.bordered)
+            .help("Extract stamp from image (remove background, change color)")
+
             Spacer()
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(.bar)
+        .sheet(isPresented: $showExtractor) {
+            StampExtractorSheet { pngData in
+                stampLibrary.addStamp(imageData: pngData, name: "Extracted Stamp")
+            }
+        }
     }
 
     private func stampThumbnail(_ stamp: SavedStamp) -> some View {
