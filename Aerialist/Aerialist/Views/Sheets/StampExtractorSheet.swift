@@ -21,6 +21,8 @@ struct StampExtractorSheet: View {
     // Crop state — normalized 0...1 coordinates relative to displayed image
     @State private var cropRect: CGRect? = nil
     @State private var isCropped = false
+    @State private var preCropCGImage: CGImage?
+    @State private var preCropImage: NSImage?
 
     // Debounce timer for slider changes
     @State private var updateTask: Task<Void, Never>?
@@ -181,9 +183,15 @@ struct StampExtractorSheet: View {
             if isCropped {
                 HStack {
                     Button("Undo Crop") {
+                        if let origCG = preCropCGImage, let origImg = preCropImage {
+                            sourceCGImage = origCG
+                            sourceImage = origImg
+                        }
                         isCropped = false
                         cropRect = nil
-                        scheduleUpdate()
+                        processedImage = nil
+                        preCropCGImage = nil
+                        preCropImage = nil
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -395,6 +403,11 @@ struct StampExtractorSheet: View {
 
     private func applyCrop() {
         guard let cropR = cropRect, let cg = sourceCGImage else { return }
+
+        // Save originals for undo
+        preCropCGImage = cg
+        preCropImage = sourceImage
+
         let w = CGFloat(cg.width)
         let h = CGFloat(cg.height)
 
@@ -449,9 +462,10 @@ struct StampExtractorSheet: View {
             ci = ci.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
         }
 
-        // Rotation
+        // Rotation (negate angle: CIImage uses math coordinates (y-up),
+        // but SwiftUI preview uses screen coordinates (y-down))
         if rotation != 0 {
-            let radians = CGFloat(rotation) * .pi / 180.0
+            let radians = CGFloat(-rotation) * .pi / 180.0
             ci = ci.transformed(by: CGAffineTransform(rotationAngle: radians))
             // Shift origin so the image is in positive coordinates
             ci = ci.transformed(by: CGAffineTransform(translationX: -ci.extent.origin.x, y: -ci.extent.origin.y))
