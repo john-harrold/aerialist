@@ -7,8 +7,45 @@ on:
   workflow_dispatch: # Allow manual trigger
 
 jobs:
+  check-changes:
+    name: Check for changes
+    runs-on: ubuntu-latest
+    outputs:
+      has_changes: ${{ steps.check.outputs.has_changes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check for new commits since last nightly tag
+        id: check
+        run: |
+          # Always build on manual trigger
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            echo "Manual trigger — building"
+            exit 0
+          fi
+
+          # Check if nightly tag exists
+          if git rev-parse nightly >/dev/null 2>&1; then
+            LAST_BUILD=$(git rev-list -1 nightly)
+            HEAD=$(git rev-parse HEAD)
+            if [ "$LAST_BUILD" = "$HEAD" ]; then
+              echo "has_changes=false" >> "$GITHUB_OUTPUT"
+              echo "No changes since last nightly build — skipping"
+            else
+              echo "has_changes=true" >> "$GITHUB_OUTPUT"
+              echo "Changes detected since last nightly build"
+            fi
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            echo "No previous nightly tag — building"
+          fi
+
   build-dmg:
     name: Build Signed DMG
+    needs: check-changes
+    if: needs.check-changes.outputs.has_changes == 'true'
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
