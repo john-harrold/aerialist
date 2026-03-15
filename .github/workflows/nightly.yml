@@ -146,7 +146,20 @@ jobs:
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
-            --wait
+            --wait 2>&1 | tee /tmp/notarize-output.txt
+
+          # Get submission ID and fetch detailed log if it failed
+          SUBMISSION_ID=$(grep 'id:' /tmp/notarize-output.txt | head -1 | awk '{print $2}')
+          if grep -q "Invalid" /tmp/notarize-output.txt; then
+            echo "Notarization failed — fetching detailed log..."
+            xcrun notarytool log "$SUBMISSION_ID" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_APP_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              /tmp/notarize-log.json 2>&1 || true
+            cat /tmp/notarize-log.json
+            exit 1
+          fi
 
           # Staple the notarization ticket
           xcrun stapler staple "$DMG_PATH"
