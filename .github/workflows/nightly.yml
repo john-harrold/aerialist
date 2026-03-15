@@ -186,7 +186,7 @@ jobs:
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
-            --wait --timeout 30m 2>&1 | tee /tmp/notarize-output.txt
+            --wait --timeout 12h 2>&1 | tee /tmp/notarize-output.txt
           NOTARY_EXIT=$?
           set -e
 
@@ -212,8 +212,8 @@ jobs:
           else
             echo "Notarization timed out or inconclusive (exit code $NOTARY_EXIT)"
             echo "Submission $SUBMISSION_ID is still processing on Apple's servers"
-            echo "The DMG will be released as signed but not yet notarized"
             echo "notarized=false" >> "$GITHUB_OUTPUT"
+            exit 1
           fi
 
       - name: Cleanup keychain
@@ -224,7 +224,6 @@ jobs:
           fi
 
       - name: Upload DMG artifact
-        if: always() && env.DMG_NAME != ''
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.DMG_NAME }}
@@ -232,7 +231,6 @@ jobs:
           retention-days: 30
 
       - name: Update nightly release
-        if: always() && env.DMG_NAME != ''
         uses: softprops/action-gh-release@v2
         with:
           tag_name: nightly
@@ -241,9 +239,8 @@ jobs:
             Automated nightly build from `main` branch.
 
             **Commit:** ${{ github.sha }}
-            **Notarized:** ${{ steps.notarize.outputs.notarized == 'true' && 'Yes' || 'No — signed but notarization pending or timed out. Right-click > Open on first launch.' }}
 
-            ${{ steps.notarize.outputs.notarized == 'true' && 'This build is signed and notarized by Apple.' || '> **Note:** This build is signed with a Developer ID certificate but Apple notarization is pending. On first launch, right-click the app and select "Open" to bypass Gatekeeper.' }}
+            This build is signed and notarized by Apple.
           prerelease: true
           files: ${{ env.DMG_PATH }}
           make_latest: false
