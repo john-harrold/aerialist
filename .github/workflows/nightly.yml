@@ -53,6 +53,28 @@ jobs:
           brew install zstd
           ./Scripts/prepare_python.sh
 
+      - name: Sign Python bundle binaries
+        run: |
+          PYTHON_DIR="Aerialist/Aerialist/Resources/python"
+          echo "Re-signing Python binaries with Developer ID..."
+          # Sign all .so, .dylib files and the python binary with Developer ID
+          find "$PYTHON_DIR" \( -name "*.so" -o -name "*.dylib" \) -type f | while read -r f; do
+            codesign --force --sign "Developer ID Application" \
+              --keychain "$KEYCHAIN_PATH" \
+              --options runtime \
+              --timestamp \
+              "$f" 2>/dev/null || true
+          done
+          # Sign the python3 binary itself
+          find "$PYTHON_DIR/bin" -name "python3*" -type f | while read -r f; do
+            codesign --force --sign "Developer ID Application" \
+              --keychain "$KEYCHAIN_PATH" \
+              --options runtime \
+              --timestamp \
+              "$f" 2>/dev/null || true
+          done
+          echo "Python bundle signing complete"
+
       - name: Build app
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -66,7 +88,8 @@ jobs:
             CODE_SIGN_IDENTITY="Developer ID Application" \
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH"
+            ENABLE_HARDENED_RUNTIME=YES \
+            OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH --timestamp --options runtime"
 
       - name: Create DMG
         run: |
@@ -104,7 +127,10 @@ jobs:
             "build/${DMG_NAME}"
 
           # Sign the DMG itself
-          codesign --force --sign "Developer ID Application" "build/${DMG_NAME}"
+          codesign --force --sign "Developer ID Application" \
+            --keychain "$KEYCHAIN_PATH" \
+            --timestamp \
+            "build/${DMG_NAME}"
 
           echo "DMG_NAME=${DMG_NAME}" >> "$GITHUB_ENV"
           echo "DMG_PATH=build/${DMG_NAME}" >> "$GITHUB_ENV"
