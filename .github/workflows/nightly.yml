@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-dmg:
-    name: Build DMG
+    name: Build Signed DMG
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -16,12 +16,46 @@ jobs:
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
 
+      - name: Import signing certificate
+        env:
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          # Create a temporary keychain
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 16)"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Import certificate
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+          echo "$APPLE_CERTIFICATE_P12" | base64 --decode > "$CERT_PATH"
+
+          security import "$CERT_PATH" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+
+          # Allow codesign to access the keychain
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Add to search list
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
       - name: Prepare Python bundle
         run: |
           brew install zstd
           ./Scripts/prepare_python.sh
 
       - name: Build app
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           xcodebuild build \
             -project Aerialist/Aerialist.xcodeproj \
@@ -29,9 +63,10 @@ jobs:
             -configuration Release \
             -destination 'platform=macOS' \
             -derivedDataPath build/DerivedData \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGN_IDENTITY="Developer ID Application" \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH"
 
       - name: Create DMG
         run: |
@@ -42,6 +77,10 @@ jobs:
             find build/DerivedData -name "Aerialist.app" -type d 2>/dev/null
             exit 1
           fi
+
+          # Verify code signature
+          codesign --verify --deep --strict "$APP_PATH"
+          echo "Code signature verified"
 
           # Create staging directory for DMG contents
           DMG_DIR="build/dmg-staging"
@@ -64,8 +103,35 @@ jobs:
             -format UDZO \
             "build/${DMG_NAME}"
 
+          # Sign the DMG itself
+          codesign --force --sign "Developer ID Application" "build/${DMG_NAME}"
+
           echo "DMG_NAME=${DMG_NAME}" >> "$GITHUB_ENV"
           echo "DMG_PATH=build/${DMG_NAME}" >> "$GITHUB_ENV"
+
+      - name: Notarize DMG
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Submit for notarization
+          xcrun notarytool submit "$DMG_PATH" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
+          # Staple the notarization ticket
+          xcrun stapler staple "$DMG_PATH"
+          echo "Notarization complete and stapled"
+
+      - name: Cleanup keychain
+        if: always()
+        run: |
+          if [ -n "$KEYCHAIN_PATH" ]; then
+            security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
+          fi
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
@@ -85,9 +151,7 @@ jobs:
             **Commit:** ${{ github.sha }}
             **Built:** ${{ github.event.repository.updated_at || github.event.head_commit.timestamp }}
 
-            > **Note:** This is an unsigned build. On first launch, right-click the app
-            > and select "Open" to bypass Gatekeeper, or go to System Settings >
-            > Privacy & Security to allow it.
+            This build is signed and notarized by Apple.
           prerelease: true
           files: ${{ env.DMG_PATH }}
           make_latest: false
