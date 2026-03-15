@@ -174,34 +174,47 @@ jobs:
           echo "DMG_PATH=build/${DMG_NAME}" >> "$GITHUB_ENV"
 
       - name: Notarize DMG
+        id: notarize
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           # Submit for notarization (30 minute timeout)
+          set +e
           xcrun notarytool submit "$DMG_PATH" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_APP_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
             --wait --timeout 30m 2>&1 | tee /tmp/notarize-output.txt
+          NOTARY_EXIT=$?
+          set -e
 
-          # Get submission ID and fetch detailed log if it failed
           SUBMISSION_ID=$(grep 'id:' /tmp/notarize-output.txt | head -1 | awk '{print $2}')
-          if grep -q "Invalid" /tmp/notarize-output.txt; then
-            echo "Notarization failed — fetching detailed log..."
+          echo "submission_id=$SUBMISSION_ID" >> "$GITHUB_OUTPUT"
+
+          # Check result
+          if grep -q "Accepted" /tmp/notarize-output.txt; then
+            echo "Notarization accepted!"
+            xcrun stapler staple "$DMG_PATH"
+            echo "Ticket stapled"
+            echo "notarized=true" >> "$GITHUB_OUTPUT"
+          elif grep -q "Invalid" /tmp/notarize-output.txt; then
+            echo "Notarization rejected — fetching detailed log..."
             xcrun notarytool log "$SUBMISSION_ID" \
               --apple-id "$APPLE_ID" \
               --password "$APPLE_APP_PASSWORD" \
               --team-id "$APPLE_TEAM_ID" \
               /tmp/notarize-log.json 2>&1 || true
             cat /tmp/notarize-log.json
+            echo "notarized=false" >> "$GITHUB_OUTPUT"
             exit 1
+          else
+            echo "Notarization timed out or inconclusive (exit code $NOTARY_EXIT)"
+            echo "Submission $SUBMISSION_ID is still processing on Apple's servers"
+            echo "The DMG will be released as signed but not yet notarized"
+            echo "notarized=false" >> "$GITHUB_OUTPUT"
           fi
-
-          # Staple the notarization ticket
-          xcrun stapler staple "$DMG_PATH"
-          echo "Notarization complete and stapled"
 
       - name: Cleanup keychain
         if: always()
@@ -211,6 +224,7 @@ jobs:
           fi
 
       - name: Upload DMG artifact
+        if: always() && env.DMG_NAME != ''
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.DMG_NAME }}
@@ -218,6 +232,7 @@ jobs:
           retention-days: 30
 
       - name: Update nightly release
+        if: always() && env.DMG_NAME != ''
         uses: softprops/action-gh-release@v2
         with:
           tag_name: nightly
@@ -226,9 +241,9 @@ jobs:
             Automated nightly build from `main` branch.
 
             **Commit:** ${{ github.sha }}
-            **Built:** ${{ github.event.repository.updated_at || github.event.head_commit.timestamp }}
+            **Notarized:** ${{ steps.notarize.outputs.notarized == 'true' && 'Yes' || 'No — signed but notarization pending or timed out. Right-click > Open on first launch.' }}
 
-            This build is signed and notarized by Apple.
+            ${{ steps.notarize.outputs.notarized == 'true' && 'This build is signed and notarized by Apple.' || '> **Note:** This build is signed with a Developer ID certificate but Apple notarization is pending. On first launch, right-click the app and select "Open" to bypass Gatekeeper.' }}
           prerelease: true
           files: ${{ env.DMG_PATH }}
           make_latest: false
