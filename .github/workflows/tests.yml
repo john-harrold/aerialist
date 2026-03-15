@@ -24,8 +24,8 @@ jobs:
       - name: Build and Test
         run: |
           xcodebuild test \
-            -project Aerialist/Aerialist.xcodeproj \
-            -scheme Aerialist \
+            -project Spindrift/Spindrift.xcodeproj \
+            -scheme Spindrift \
             -destination 'platform=macOS' \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
@@ -35,8 +35,8 @@ jobs:
       - name: Build CLI
         run: |
           xcodebuild build \
-            -project Aerialist/Aerialist.xcodeproj \
-            -scheme AerialistCLI \
+            -project Spindrift/Spindrift.xcodeproj \
+            -scheme SpindriftCLI \
             -destination 'platform=macOS' \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \

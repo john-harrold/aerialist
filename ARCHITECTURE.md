@@ -1,6 +1,6 @@
-# Aerialist — Application Specification
+# Spindrift — Application Specification
 
-Aerialist is a native macOS PDF reading and annotation tool built as an alternative to Adobe Acrobat, focusing on a specific subset of PDF editing features. This document defines the complete application as implemented.
+Spindrift is a native macOS PDF reading and annotation tool built as an alternative to Adobe Acrobat, focusing on a specific subset of PDF editing features. This document defines the complete application as implemented.
 
 ## Technology Stack
 
@@ -9,20 +9,20 @@ Aerialist is a native macOS PDF reading and annotation tool built as an alternat
 - **UI Framework**: SwiftUI + AppKit hybrid
 - **PDF Engine**: PDFKit (`PDFDocument`, `PDFView`, `PDFAnnotation` subclasses)
 - **OCR**: Apple Vision framework (`VNRecognizeTextRequest`)
-- **Architecture**: MVVM — `DocumentViewModel` (@Observable, @MainActor) drives the UI; `AerialistDocument` (ReferenceFileDocument) handles persistence
-- **Concurrency**: `@MainActor` on all view models, services touching PDFKit; `@unchecked Sendable` on `AerialistDocument` for `ReferenceFileDocument` conformance; custom `registerUndo` helper dispatching `@MainActor` closures via `Task`
+- **Architecture**: MVVM — `DocumentViewModel` (@Observable, @MainActor) drives the UI; `SpindriftDocument` (ReferenceFileDocument) handles persistence
+- **Concurrency**: `@MainActor` on all view models, services touching PDFKit; `@unchecked Sendable` on `SpindriftDocument` for `ReferenceFileDocument` conformance; custom `registerUndo` helper dispatching `@MainActor` closures via `Task`
 
 ## Application Structure
 
 ### App Entry Point
-- `AerialistApp.swift`: `@main` SwiftUI `App` using `DocumentGroup` for document-based multi-window support. Each window opens one PDF. File menu includes "Export as PDF..." (Cmd+Shift+E) via `NotificationCenter`.
+- `SpindriftApp.swift`: `@main` SwiftUI `App` using `DocumentGroup` for document-based multi-window support. Each window opens one PDF. File menu includes "Export as PDF..." (Cmd+Shift+E) via `NotificationCenter`.
 
 ### Document Layer
 
-#### `AerialistDocument.swift` — ReferenceFileDocument
+#### `SpindriftDocument.swift` — ReferenceFileDocument
 - Opens and saves plain `.pdf` files (no custom package format)
-- **Sidecar persistence**: Annotation data is stored as a hidden `.freeText` annotation on page 0 with `userName = "com.aerialist.sidecar"`, `bounds = 0.1x0.1`, `color = clear`, containing the sidecar JSON in `contents`
-- **Annotation tagging**: All managed annotations get `userName = "aerialist:type:UUID"` (e.g., `"aerialist:comment:550E8400-..."`) so they can be identified, reconciled, and stripped on load
+- **Sidecar persistence**: Annotation data is stored as a hidden `.freeText` annotation on page 0 with `userName = "com.spindrift.sidecar"`, `bounds = 0.1x0.1`, `color = clear`, containing the sidecar JSON in `contents`
+- **Annotation tagging**: All managed annotations get `userName = "spindrift:type:UUID"` (e.g., `"spindrift:comment:550E8400-..."`) so they can be identified, reconciled, and stripped on load
 - **Reconciliation on load** (`reconcileAndStrip`): When opening a file, scans all pages for tagged annotations. Reads back property changes made by external apps (e.g., Preview.app moved a comment or edited text). Updates the sidecar model accordingly. If a tagged annotation is missing (sidecar version >= 2), it was deleted externally — removes from sidecar. Strips all managed annotations from pages so the coordinator can recreate them fresh.
 - **Standard annotation save**: On `snapshot()`, temporarily swaps custom `PDFAnnotation` subclasses with standard PDF types (`.freeText`, `.square`, `.circle`, `.line`, `.text`, `.stamp`, `.highlight`, `.underline`, `.strikeOut`) so other PDF readers can display them. After serialization, restores custom annotations for continued editing.
 - Sidecar version 2 enables deletion detection
@@ -67,14 +67,14 @@ Exports a flattened PDF with all sidecar annotations rendered as standard PDF an
 
 ### PDF Canvas Layer
 
-#### `AerialistPDFView.swift` — Custom PDFView Subclass
+#### `SpindriftPDFView.swift` — Custom PDFView Subclass
 - Overrides `mouseDown`, `mouseDragged`, `mouseUp`, `rightMouseDown` for custom interaction
 - Callbacks: `onPageClick`, `onPageDoubleClick`, `onPageDrag`, `onPageMouseUp`, `onPageRightClick`
 - Tracks `isDragging` state to only forward drags when the initial click was consumed
 - Converts mouse coordinates from view space to PDF page coordinates
 
 #### `PDFCanvasView.swift` — NSViewRepresentable
-- Wraps `AerialistPDFView` for SwiftUI integration
+- Wraps `SpindriftPDFView` for SwiftUI integration
 - `makeNSView`: Creates the PDF view, wires callbacks to coordinator, sets auto-scales
 - `updateNSView`: Navigates to correct page via `pdfView.go(to:)`, syncs annotations via revision tracking, applies markup tool changes, sets initial zoom-to-width
 
@@ -248,7 +248,7 @@ NavigationSplitView {
 ### Model Layer
 
 #### `StampLibrary.swift` — Persistent Stamp Collection
-- Stores stamps in `~/Library/Application Support/com.aerialist.app/stamps/` as PNG files with UUID filenames
+- Stores stamps in `~/Library/Application Support/com.spindrift.app/stamps/` as PNG files with UUID filenames
 - `stamps.json` index file with metadata (id, name, filename, dateAdded)
 - `@Observable` class: `load()`, `addStamp(imageData:name:)`, `addStamp(from:url:)`, `deleteStamp(id:)`, `imageData(for:)`, `thumbnail(for:)`
 - Accepts PNG and PDF files. PDFs rendered to PNG via `CGContext` at 2x scale with transparent background
@@ -290,11 +290,11 @@ NavigationSplitView {
 
 ## File Structure
 ```
-Aerialist/
+Spindrift/
 ├── App/
-│   └── AerialistApp.swift
+│   └── SpindriftApp.swift
 ├── Document/
-│   ├── AerialistDocument.swift
+│   ├── SpindriftDocument.swift
 │   ├── DocumentExporter.swift
 │   ├── SidecarIO.swift
 │   └── SidecarModel.swift
@@ -303,7 +303,7 @@ Aerialist/
 │   ├── StampAnnotationModel+Extensions.swift
 │   └── StampLibrary.swift
 ├── PDFCanvas/
-│   ├── AerialistPDFView.swift
+│   ├── SpindriftPDFView.swift
 │   ├── CommentAnnotation.swift
 │   ├── InteractionHandler.swift
 │   ├── PDFCanvasCoordinator.swift

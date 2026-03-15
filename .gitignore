@@ -4,7 +4,7 @@ DerivedData/
 build/
 
 # Bundled Python runtime (large, built by Scripts/)
-Aerialist/Aerialist/Resources/python/
+Spindrift/Spindrift/Resources/python/
 
 # Xcode
 *.xcuserdata

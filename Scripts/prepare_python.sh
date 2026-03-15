@@ -3,13 +3,13 @@
 #
 # Downloads a standalone, relocatable Python distribution (python-build-standalone)
 # and installs pdf2docx into it. The result is a self-contained Python directory
-# that can be embedded in the Aerialist app bundle.
+# that can be embedded in the Spindrift app bundle.
 #
 # Usage:
 #   ./Scripts/prepare_python.sh
 #
 # Output:
-#   Aerialist/Aerialist/Resources/python/  - ready-to-embed Python distribution
+#   Spindrift/Spindrift/Resources/python/  - ready-to-embed Python distribution
 #
 # Requirements:
 #   - curl, tar, zstd (brew install zstd)
@@ -20,7 +20,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="$PROJECT_DIR/.build/python-bundle"
-OUTPUT_DIR="$PROJECT_DIR/Aerialist/Aerialist/Resources/python"
+OUTPUT_DIR="$PROJECT_DIR/Spindrift/Spindrift/Resources/python"
 
 # Python version and release
 PYTHON_VERSION="3.12.12"
@@ -41,7 +41,7 @@ FLAVOR="install_only_stripped"
 FILENAME="cpython-${PYTHON_VERSION}+${RELEASE}-${PLATFORM}-${FLAVOR}.tar.gz"
 URL="https://github.com/astral-sh/python-build-standalone/releases/download/${RELEASE}/${FILENAME}"
 
-echo "=== Aerialist Python Bundle Preparation ==="
+echo "=== Spindrift Python Bundle Preparation ==="
 echo "Python:   $PYTHON_VERSION"
 echo "Platform: $PLATFORM"
 echo "Output:   $OUTPUT_DIR"

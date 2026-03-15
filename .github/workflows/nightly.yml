@@ -92,7 +92,7 @@ jobs:
 
       - name: Sign Python bundle binaries
         run: |
-          PYTHON_DIR="Aerialist/Aerialist/Resources/python"
+          PYTHON_DIR="Spindrift/Spindrift/Resources/python"
           echo "Re-signing Python binaries with Developer ID..."
           # Sign all .so, .dylib files and the python binary with Developer ID
           find "$PYTHON_DIR" \( -name "*.so" -o -name "*.dylib" \) -type f | while read -r f; do
@@ -117,8 +117,8 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           xcodebuild build \
-            -project Aerialist/Aerialist.xcodeproj \
-            -scheme Aerialist \
+            -project Spindrift/Spindrift.xcodeproj \
+            -scheme Spindrift \
             -configuration Release \
             -destination 'platform=macOS' \
             -derivedDataPath build/DerivedData \
@@ -131,11 +131,11 @@ jobs:
 
       - name: Create DMG
         run: |
-          APP_PATH="build/DerivedData/Build/Products/Release/Aerialist.app"
+          APP_PATH="build/DerivedData/Build/Products/Release/Spindrift.app"
 
           if [ ! -d "$APP_PATH" ]; then
-            echo "Error: Aerialist.app not found at $APP_PATH"
-            find build/DerivedData -name "Aerialist.app" -type d 2>/dev/null
+            echo "Error: Spindrift.app not found at $APP_PATH"
+            find build/DerivedData -name "Spindrift.app" -type d 2>/dev/null
             exit 1
           fi
 
@@ -154,11 +154,11 @@ jobs:
           # Get version info
           VERSION=$(date -u +"%Y.%m.%d")
           SHORT_SHA=$(git rev-parse --short HEAD)
-          DMG_NAME="Aerialist-nightly-${VERSION}-${SHORT_SHA}.dmg"
+          DMG_NAME="Spindrift-nightly-${VERSION}-${SHORT_SHA}.dmg"
 
           # Create DMG
           hdiutil create \
-            -volname "Aerialist" \
+            -volname "Spindrift" \
             -srcfolder "$DMG_DIR" \
             -ov \
             -format UDZO \
