@@ -9,13 +9,15 @@ Spindrift is a native macOS PDF reading and annotation tool built as an alternat
 - **UI Framework**: SwiftUI + AppKit hybrid
 - **PDF Engine**: PDFKit (`PDFDocument`, `PDFView`, `PDFAnnotation` subclasses)
 - **OCR**: Apple Vision framework (`VNRecognizeTextRequest`)
+- **Python**: Bundled standalone Python 3.12 distribution with pdf2docx and docx2pdf
 - **Architecture**: MVVM — `DocumentViewModel` (@Observable, @MainActor) drives the UI; `SpindriftDocument` (ReferenceFileDocument) handles persistence
 - **Concurrency**: `@MainActor` on all view models, services touching PDFKit; `@unchecked Sendable` on `SpindriftDocument` for `ReferenceFileDocument` conformance; custom `registerUndo` helper dispatching `@MainActor` closures via `Task`
 
 ## Application Structure
 
 ### App Entry Point
-- `SpindriftApp.swift`: `@main` SwiftUI `App` using `DocumentGroup` for document-based multi-window support. Each window opens one PDF. File menu includes "Export as PDF..." (Cmd+Shift+E) via `NotificationCenter`.
+- `SpindriftApp.swift`: `@main` SwiftUI `App` with `@NSApplicationDelegateAdaptor(SpindriftAppDelegate.self)`. Uses `DocumentGroup` for PDF document windows and a `WindowGroup("Welcome to Spindrift", id: "launcher")` for the launcher screen shown on startup. File menu replaces the default Open with a custom one supporting both PDFs and `.spindriftcollection` files. Includes "Export as PDF..." (Cmd+Shift+E), "Export as Word...", "Export as Text..." via `NotificationCenter`. Collection-specific menu items (Export as Word/Text) are greyed out via `FocusedValues` when a collection window is active.
+- `SpindriftAppDelegate.swift`: `@MainActor NSApplicationDelegate`. Suppresses initial `DocumentGroup` open dialog (`applicationShouldOpenUntitledFile` returns false on first launch) so the launcher appears. Handles `application(_:open:)` to route `.spindriftcollection` files to collection editor windows and PDFs to `NSDocumentController`. Opens collection windows as `NSWindow` + `NSHostingView(rootView: CollectionEditorView)`. Registers with Launch Services on launch (`LSRegisterURL`). Listens for `.openCollection` notifications from menu commands and launcher.
 
 ### Document Layer
 
@@ -58,6 +60,20 @@ SidecarModel {
 - `ShapeType`: line/arrow/rectangle/ellipse (CaseIterable enum with systemImage and tooltip)
 - `OCRLineResult`: text, boundingBox, confidence
 - `OCRPageResult`: array of OCRLineResult
+
+#### `CollectionModel.swift` — File Collection Data Model
+- `CollectionModel`: Codable struct with `version` and `entries: [CollectionEntry]`
+- `CollectionEntry`: Codable, Identifiable struct containing:
+  - `fileData: Data` — the actual file bytes embedded in the collection (self-contained, portable)
+  - `originalFileName: String` — display name
+  - `tocTitle: String` — user-editable TOC/bookmark label (defaults to filename without extension)
+  - `fileType: String` — lowercase extension for icon selection
+  - Supports PDF, DOCX, DOC, PNG, JPG, JPEG, TIFF, BMP, GIF
+
+#### `CollectionDocument.swift` — UTType Registration
+- Declares `UTType.spindriftCollection` (`com.spindrift.collection`, conforming to `public.data`)
+- File extension: `.spindriftcollection`
+- Registered in `Info.plist` as exported UTType with document type (role: Editor, rank: Owner)
 
 #### `SidecarIO.swift`
 JSON encode/decode utilities for SidecarModel.
@@ -173,6 +189,26 @@ Manages all PDF canvas interactions:
 
 ### Views
 
+#### `LauncherView.swift` — Welcome Screen
+Shown on app launch instead of the file picker. Two large buttons:
+- **Open a File**: Opens `NSOpenPanel` accepting `.pdf` and `.spindriftcollection`. Routes PDFs to `NSDocumentController` and collections to `openCollectionWindow` via notification.
+- **Combine Files**: Opens `NSSavePanel` for a new `.spindriftcollection` file, writes empty collection JSON, then opens it.
+Uses `LauncherButton` helper view with icon, title, subtitle, and card-style appearance.
+
+#### `CollectionEditorView.swift` — Collection Editor
+Full-featured editor for `.spindriftcollection` files. Manages its own file I/O (not a `DocumentGroup`).
+- **Toolbar**: Add Files, Undo/Redo (Cmd+Z / Cmd+Shift+Z), Save (Cmd+S), Export as PDF
+- **File list**: `List(selection:)` with multi-select (Cmd+click, Shift+click). Each row shows file icon, editable TOC title, filename, open button, and remove button.
+- **Drag-and-drop**: `.onDrop(of: [.fileURL])` for adding files from Finder
+- **Reorder**: `.onMove` for drag reordering
+- **Rename**: Select + Enter starts inline editing via `RenameField` (auto-focused `TextField`). Enter commits, Escape cancels.
+- **Context menu**: Rename (single), Open, Remove. Delete key removes selected entries.
+- **Undo/redo**: `CollectionUndoState` — simple stack-based undo/redo. Every mutation (add, remove, reorder, rename) snapshots the full model.
+- **Export as PDF**: Writes embedded file data to temp files, calls `FileCombinerService.combineWithLabels()`, presents `NSSavePanel`.
+- **File I/O**: `load()` supports both legacy flat JSON and package directory formats. `save()` always writes flat JSON. Migrates packages to flat on save.
+- Listens for `.exportAsPDF` notification so File > Export as PDF works.
+- Publishes `.focusedSceneValue(\.isCollection, true)` so menu items can be disabled.
+
 #### `ContentView.swift` — Main Layout
 ```
 NavigationSplitView {
@@ -258,7 +294,13 @@ NavigationSplitView {
 
 **OCRService**: Renders PDF page to CGImage at 300 DPI, runs Vision `VNRecognizeTextRequest` (accurate mode with language correction), converts normalized Vision coordinates to PDF page coordinates. `recognizeAllPages` with progress callback.
 
-**FileCombinerService**: Combines multiple files (PDFs and images) into a single PDFDocument. Creates PDF outline (bookmarks) with filename labels for each source file.
+**FileCombinerService**: Combines multiple files (PDFs, Word documents, and images) into a single PDFDocument. Creates PDF outline (bookmarks) with custom or filename-derived labels for each source file. `combineWithLabels(files:)` accepts custom TOC labels for collection export.
+
+**DOCX-to-PDF conversion chain** (in `convertWordToPDF`): Tries converters in order of fidelity, using whichever is available:
+1. **Microsoft Word** via `docx2pdf` Python package — best fidelity. Automates Word via AppleScript. Requires Word installed at `/Applications/Microsoft Word.app` and `docx2pdf` in the bundled Python.
+2. **LibreOffice** headless mode (`soffice --headless --convert-to pdf`) — near-Word fidelity. Checks `/Applications/LibreOffice.app/Contents/MacOS/soffice`, `/opt/homebrew/bin/soffice`, `/usr/local/bin/soffice`. Uses isolated `UserInstallation` directory to avoid conflicting with a running LibreOffice instance.
+3. **Pandoc** (`pandoc input.docx -o output.pdf`) — decent fidelity for simple documents. Checks `/usr/local/bin/pandoc`, `/opt/homebrew/bin/pandoc`, `/usr/bin/pandoc`.
+4. **NSAttributedString fallback** — always available, basic formatting only. Loads docx via `.officeOpenXML` document type, renders to paginated PDF using `NSLayoutManager` with multiple `NSTextContainer`s (one per page). Preserves text content but loses tables, complex lists, and precise spacing.
 
 **ImageToPDFService**: Converts image files to PDFPage objects for combining.
 
@@ -292,9 +334,12 @@ NavigationSplitView {
 ```
 Spindrift/
 ├── App/
-│   └── SpindriftApp.swift
+│   ├── SpindriftApp.swift
+│   └── SpindriftAppDelegate.swift
 ├── Document/
 │   ├── SpindriftDocument.swift
+│   ├── CollectionDocument.swift (UTType registration)
+│   ├── CollectionModel.swift
 │   ├── DocumentExporter.swift
 │   ├── SidecarIO.swift
 │   └── SidecarModel.swift
@@ -326,6 +371,8 @@ Spindrift/
 │   └── TextEditingViewModel.swift
 └── Views/
     ├── ContentView.swift
+    ├── LauncherView.swift
+    ├── CollectionEditorView.swift
     ├── Inspectors/
     │   ├── CommentInspector.swift
     │   ├── CommentsPanel.swift
@@ -364,7 +411,10 @@ Spindrift/
 - Remove markup tool
 - Multi-page selection (Cmd-click, Shift-click) with delete confirmation
 - Page deletion with undo support
-- File combining (PDF + images) with bookmarks
+- File combining (PDF + DOCX + images) with bookmarks
+- DOCX-to-PDF conversion chain: Word → LibreOffice → Pandoc → NSAttributedString
+- Collection documents (.spindriftcollection) with embedded file data, editable TOC, undo/redo
+- Launcher window with Open a File / Combine Files
 - OCR via Apple Vision framework
 - Sidecar persistence embedded in PDF
 - Interoperability with Preview.app (standard annotation types, reconciliation)
