@@ -85,10 +85,11 @@ echo "  Python binary: $PYTHON_DIR/bin/python3"
 
 # Step 3: Install pdf2docx
 echo "Step 3/6: Installing pdf2docx and dependencies..."
-"$PYTHON_DIR/bin/python3" -m pip install --quiet 'PyMuPDF<1.25' pdf2docx
+"$PYTHON_DIR/bin/python3" -m pip install --quiet 'PyMuPDF<1.25' pdf2docx docx2pdf
 
 # Verify installation
 "$PYTHON_DIR/bin/python3" -c "from pdf2docx import Converter; print('  pdf2docx OK')"
+"$PYTHON_DIR/bin/python3" -c "import docx2pdf; print('  docx2pdf OK')"
 
 # Step 4: Strip unnecessary files to reduce size
 echo "Step 4/6: Stripping unnecessary files..."

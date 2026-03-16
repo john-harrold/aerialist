@@ -26,6 +26,7 @@ struct CollectionEntry: Codable, Equatable, Identifiable, Sendable {
         switch fileType {
         case "pdf": return "doc.richtext"
         case "png", "jpg", "jpeg", "tiff", "bmp", "gif": return "photo"
+        case "docx", "doc": return "doc.text"
         default: return "doc"
         }
     }

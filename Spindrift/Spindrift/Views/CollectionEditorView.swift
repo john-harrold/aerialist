@@ -110,7 +110,7 @@ struct CollectionEditorView: View {
             Text("Drop files here or click Add Files")
                 .font(.title3)
                 .foregroundStyle(.secondary)
-            Text("PDF, PNG, JPG, TIFF, BMP, GIF")
+            Text("PDF, DOCX, PNG, JPG, TIFF, BMP, GIF")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
             Spacer()
@@ -267,7 +267,9 @@ struct CollectionEditorView: View {
     private func addFiles() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
-        panel.allowedContentTypes = [.pdf, .png, .jpeg, .tiff, .bmp, .gif]
+        panel.allowedContentTypes = [.pdf, .png, .jpeg, .tiff, .bmp, .gif,
+                                     UTType("org.openxmlformats.wordprocessingml.document")!,
+                                     UTType("com.microsoft.word.doc")!]
         panel.begin { response in
             guard response == .OK else { return }
             addURLs(panel.urls)
