@@ -91,6 +91,11 @@
 		B10000000000000000000063 /* BoxSelectService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000063 /* BoxSelectService.swift */; };
 		B10000000000000000000064 /* BoxSelectionAnnotation.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000064 /* BoxSelectionAnnotation.swift */; };
 		B10000000000000000000065 /* StampExtractorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000065 /* StampExtractorSheet.swift */; };
+		B10000000000000000000070 /* SpindriftAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000070 /* SpindriftAppDelegate.swift */; };
+		B10000000000000000000071 /* CollectionDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000071 /* CollectionDocument.swift */; };
+		B10000000000000000000072 /* CollectionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000072 /* CollectionModel.swift */; };
+		B10000000000000000000073 /* LauncherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000073 /* LauncherView.swift */; };
+		B10000000000000000000074 /* CollectionEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000074 /* CollectionEditorView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -195,6 +200,11 @@
 		F10000000000000000000063 /* BoxSelectService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoxSelectService.swift; sourceTree = "<group>"; };
 		F10000000000000000000064 /* BoxSelectionAnnotation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoxSelectionAnnotation.swift; sourceTree = "<group>"; };
 		F10000000000000000000065 /* StampExtractorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StampExtractorSheet.swift; sourceTree = "<group>"; };
+		F10000000000000000000070 /* SpindriftAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpindriftAppDelegate.swift; sourceTree = "<group>"; };
+		F10000000000000000000071 /* CollectionDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollectionDocument.swift; sourceTree = "<group>"; };
+		F10000000000000000000072 /* CollectionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollectionModel.swift; sourceTree = "<group>"; };
+		F10000000000000000000073 /* LauncherView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LauncherView.swift; sourceTree = "<group>"; };
+		F10000000000000000000074 /* CollectionEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollectionEditorView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -254,6 +264,7 @@
 			isa = PBXGroup;
 			children = (
 				F10000000000000000000001 /* SpindriftApp.swift */,
+				F10000000000000000000070 /* SpindriftAppDelegate.swift */,
 				F10000000000000000000024 /* Info.plist */,
 			);
 			path = App;
@@ -266,6 +277,8 @@
 				F10000000000000000000003 /* SidecarModel.swift */,
 				F10000000000000000000004 /* SidecarIO.swift */,
 				F10000000000000000000005 /* DocumentExporter.swift */,
+				F10000000000000000000071 /* CollectionDocument.swift */,
+				F10000000000000000000072 /* CollectionModel.swift */,
 			);
 			path = Document;
 			sourceTree = "<group>";
@@ -316,6 +329,8 @@
 			children = (
 				F10000000000000000000013 /* ContentView.swift */,
 				F10000000000000000000062 /* HelpView.swift */,
+				F10000000000000000000073 /* LauncherView.swift */,
+				F10000000000000000000074 /* CollectionEditorView.swift */,
 				G10000000000000000000009 /* Toolbar */,
 				G1000000000000000000000A /* Sidebar */,
 				G1000000000000000000000B /* Inspectors */,
@@ -646,6 +661,11 @@
 				B10000000000000000000063 /* BoxSelectService.swift in Sources */,
 				B10000000000000000000064 /* BoxSelectionAnnotation.swift in Sources */,
 				B10000000000000000000065 /* StampExtractorSheet.swift in Sources */,
+				B10000000000000000000070 /* SpindriftAppDelegate.swift in Sources */,
+				B10000000000000000000071 /* CollectionDocument.swift in Sources */,
+				B10000000000000000000072 /* CollectionModel.swift in Sources */,
+				B10000000000000000000073 /* LauncherView.swift in Sources */,
+				B10000000000000000000074 /* CollectionEditorView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

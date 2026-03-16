@@ -1,5 +1,6 @@
 import SwiftUI
 import PDFKit
+import UniformTypeIdentifiers
 
 struct HelpCommands: Commands {
     @Environment(\.openWindow) private var openWindow
@@ -13,9 +14,31 @@ struct HelpCommands: Commands {
     }
 }
 
+struct FocusedIsCollectionKey: FocusedValueKey {
+    typealias Value = Bool
+}
+
+extension FocusedValues {
+    var isCollection: Bool? {
+        get { self[FocusedIsCollectionKey.self] }
+        set { self[FocusedIsCollectionKey.self] = newValue }
+    }
+}
+
 @main
 struct SpindriftApp: App {
+    @NSApplicationDelegateAdaptor(SpindriftAppDelegate.self) var appDelegate
+    @FocusedValue(\.isCollection) var isCollection
+
     var body: some Scene {
+        // Launcher window (shown on launch)
+        WindowGroup("Welcome to Spindrift", id: "launcher") {
+            LauncherView()
+        }
+        .defaultSize(width: 500, height: 340)
+        .windowResizability(.contentSize)
+
+        // PDF document windows
         DocumentGroup(newDocument: { SpindriftDocument() }) { file in
             ContentView(document: file.document)
         }
@@ -38,6 +61,7 @@ struct SpindriftApp: App {
                     )
                 }
                 .keyboardShortcut("w", modifiers: [.command, .shift])
+                .disabled(isCollection == true)
 
                 Button("Export as Text...") {
                     NotificationCenter.default.post(
@@ -46,6 +70,20 @@ struct SpindriftApp: App {
                     )
                 }
                 .keyboardShortcut("x", modifiers: [.command, .shift])
+                .disabled(isCollection == true)
+            }
+
+            // Replace the default Open with one that supports both PDFs and collections
+            CommandGroup(replacing: .newItem) {
+                Button("New") {
+                    NSDocumentController.shared.newDocument(nil)
+                }
+                .keyboardShortcut("n", modifiers: .command)
+
+                Button("Open...") {
+                    openFilePanel()
+                }
+                .keyboardShortcut("o", modifiers: .command)
             }
 
             CommandGroup(after: .importExport) {
@@ -92,6 +130,24 @@ struct SpindriftApp: App {
         }
         .defaultSize(width: 700, height: 500)
     }
+
+    private func openFilePanel() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.pdf, .spindriftCollection]
+        panel.allowsMultipleSelection = false
+        panel.treatsFilePackagesAsDirectories = false
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            if url.pathExtension.lowercased() == "spindriftcollection" {
+                NotificationCenter.default.post(name: .openCollection, object: url)
+            } else {
+                NSDocumentController.shared.openDocument(
+                    withContentsOf: url,
+                    display: true
+                ) { _, _, _ in }
+            }
+        }
+    }
 }
 
 extension Notification.Name {
@@ -102,4 +158,5 @@ extension Notification.Name {
     static let ocrAllPages = Notification.Name("ocrAllPages")
     static let combineFiles = Notification.Name("combineFiles")
     static let tableSelect = Notification.Name("tableSelect")
+    static let openCollection = Notification.Name("openCollection")
 }

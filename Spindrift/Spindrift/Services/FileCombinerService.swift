@@ -6,10 +6,16 @@ enum FileCombinerService {
 
     /// Combine multiple files (PDFs and images) into a single PDFDocument with bookmarks.
     static func combine(files: [URL]) -> PDFDocument? {
+        let pairs = files.map { (url: $0, label: $0.deletingPathExtension().lastPathComponent) }
+        return combineWithLabels(files: pairs)
+    }
+
+    /// Combine files with custom bookmark labels (for collection export).
+    static func combineWithLabels(files: [(url: URL, label: String)]) -> PDFDocument? {
         let combined = PDFDocument()
         let outline = PDFOutline()
 
-        for fileURL in files {
+        for (fileURL, label) in files {
             let startPage = combined.pageCount
 
             if fileURL.pathExtension.lowercased() == "pdf" {
@@ -30,7 +36,7 @@ enum FileCombinerService {
             if combined.pageCount > startPage,
                let bookmarkPage = combined.page(at: startPage) {
                 let bookmark = PDFOutline()
-                bookmark.label = fileURL.deletingPathExtension().lastPathComponent
+                bookmark.label = label
                 bookmark.destination = PDFDestination(page: bookmarkPage, at: .zero)
                 outline.insertChild(bookmark, at: outline.numberOfChildren)
             }
