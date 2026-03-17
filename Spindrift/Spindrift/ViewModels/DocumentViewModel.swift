@@ -3,6 +3,7 @@ import PDFKit
 import AppKit
 
 enum ToolMode: String, CaseIterable, Identifiable {
+    case find = "Find"
     case select = "Select"
     case stamp = "Stamp"
     case textBox = "Text Box"
@@ -18,6 +19,7 @@ enum ToolMode: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
+        case .find: return "magnifyingglass"
         case .select: return "cursorarrow"
         case .stamp: return "signature"
         case .textBox: return "textbox"
@@ -33,7 +35,11 @@ enum ToolMode: String, CaseIterable, Identifiable {
 
     /// Modes shown in the main segmented picker (excludes markup tools)
     static var pickerCases: [ToolMode] {
-        [.select, .stamp, .textBox, .comment, .draw]
+        [.find, .select, .stamp, .textBox, .comment, .draw]
+    }
+
+    var isFind: Bool {
+        self == .find
     }
 
     /// Markup modes shown in the markup toolbar
@@ -134,6 +140,39 @@ final class DocumentViewModel {
     var pendingStampData: Data?
     var selectedStampLibraryID: UUID?
     var showCombineSheet = false
+
+    // MARK: - Search State
+    var searchText: String = ""
+    var searchResults: [PDFSelection] = []
+    var currentSearchIndex: Int = 0
+
+    func performSearch() {
+        searchResults = []
+        currentSearchIndex = 0
+        guard !searchText.isEmpty, let pdf = pdfDocument else { return }
+        searchResults = pdf.findString(searchText, withOptions: .caseInsensitive)
+    }
+
+    func navigateToSearchResult(_ index: Int) {
+        guard index >= 0, index < searchResults.count,
+              let page = searchResults[index].pages.first,
+              let pdf = pdfDocument else { return }
+        currentSearchIndex = index
+        let pageIndex = pdf.index(for: page)
+        goToPage(pageIndex)
+    }
+
+    func nextSearchResult() {
+        guard !searchResults.isEmpty else { return }
+        let next = (currentSearchIndex + 1) % searchResults.count
+        navigateToSearchResult(next)
+    }
+
+    func previousSearchResult() {
+        guard !searchResults.isEmpty else { return }
+        let prev = (currentSearchIndex - 1 + searchResults.count) % searchResults.count
+        navigateToSearchResult(prev)
+    }
 
     // MARK: - OCR State
     var showOCRToolbar = false

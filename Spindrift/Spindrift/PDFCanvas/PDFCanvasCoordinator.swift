@@ -271,6 +271,9 @@ class PDFCanvasCoordinator: NSObject, PDFViewDelegate {
         preDragSidecar = nil
 
         switch viewModel.toolMode {
+        case .find:
+            // Observe mode: don't handle clicks, let PDFView handle text selection/scrolling
+            return false
         case .stamp:
             // Check if clicking any existing annotation first
             let stampHit = InteractionHandler.hitTest(

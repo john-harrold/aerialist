@@ -101,6 +101,11 @@ struct PDFCanvasView: NSViewRepresentable {
         _ = viewModel.selectedAnnotationID
         _ = viewModel.toolMode
 
+        // Sync zoom level
+        if abs(pdfView.scaleFactor - viewModel.zoomLevel) > 0.001 {
+            pdfView.scaleFactor = viewModel.zoomLevel
+        }
+
         // Set cursor override based on tool mode
         _ = viewModel.selectMode
         if viewModel.toolMode == .tableSelect {

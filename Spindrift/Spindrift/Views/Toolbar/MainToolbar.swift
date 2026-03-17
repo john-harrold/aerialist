@@ -4,6 +4,10 @@ struct MainToolbar: CustomizableToolbarContent {
     @Bindable var viewModel: DocumentViewModel
 
     var body: some CustomizableToolbarContent {
+        ToolbarItem(id: "tool-find") {
+            toolButton(for: .find, tooltip: "Find text, zoom")
+        }
+
         ToolbarItem(id: "tool-select") {
             toolButton(for: .select, tooltip: "Select and move annotations")
         }

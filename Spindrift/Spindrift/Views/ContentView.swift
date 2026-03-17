@@ -15,34 +15,56 @@ extension View {
 struct ContentView: View {
     @ObservedObject var document: SpindriftDocument
     @State private var viewModel = DocumentViewModel()
-    @State private var showThumbnailSidebar = true
+    @State private var sidebarMode: SidebarMode = .thumbnails
+    @State private var showLeftSidebar = true
+    @State private var showRightSidebar = true
+    @State private var zoomText = "100%"
     @Environment(\.undoManager) private var undoManager
 
+    enum SidebarMode: String, CaseIterable {
+        case thumbnails = "Thumbnails"
+        case outline = "TOC"
+    }
+
     var body: some View {
-        NavigationSplitView {
-            if showThumbnailSidebar {
-                ThumbnailSidebar(viewModel: viewModel)
-                    .frame(minWidth: 120, idealWidth: 160, maxWidth: 250)
+        HStack(spacing: 0) {
+            if showLeftSidebar {
+                VStack(spacing: 0) {
+                    Picker("", selection: $sidebarMode) {
+                        ForEach(SidebarMode.allCases, id: \.self) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(8)
+
+                    switch sidebarMode {
+                    case .thumbnails:
+                        ThumbnailSidebar(viewModel: viewModel)
+                    case .outline:
+                        OutlineSidebar(pdfDocument: document.pdfDocument, viewModel: viewModel)
+                    }
+                }
+                .frame(width: 160)
+
+                Divider()
             }
-        } detail: {
+
             VStack(spacing: 0) {
-                if viewModel.toolMode == .select && !viewModel.showOCRToolbar && !viewModel.showTableToolbar {
-                    selectModeToolbar
-                }
-                if viewModel.toolMode.isStamp {
-                    stampToolbar
-                }
-                if viewModel.toolMode.isMarkup {
-                    markupToolbar
-                }
-                if viewModel.toolMode.isDraw {
-                    drawToolbar
-                }
                 if viewModel.showOCRToolbar {
                     ocrToolbar
-                }
-                if viewModel.showTableToolbar {
+                } else if viewModel.showTableToolbar {
                     tableToolbar
+                } else if viewModel.toolMode.isFind {
+                    observeToolbar
+                } else if viewModel.toolMode == .select {
+                    selectModeToolbar
+                } else if viewModel.toolMode.isStamp {
+                    stampToolbar
+                } else if viewModel.toolMode.isMarkup {
+                    markupToolbar
+                } else if viewModel.toolMode.isDraw {
+                    drawToolbar
                 }
                 PDFCanvasView(
                     pdfDocument: document.pdfDocument,
@@ -53,12 +75,30 @@ struct ContentView: View {
                 }
             }
         }
-        .inspector(isPresented: showInspector) {
+        .inspector(isPresented: $showRightSidebar) {
             inspectorContent
                 .inspectorColumnWidth(min: 220, ideal: 260, max: 300)
         }
         .toolbar(id: "main") {
+            ToolbarItem(id: "toggle-sidebar", placement: .automatic) {
+                Button {
+                    withAnimation {
+                        showLeftSidebar.toggle()
+                    }
+                } label: {
+                    Label("Sidebar", systemImage: "sidebar.left")
+                }
+                .help("Toggle left sidebar")
+            }
             MainToolbar(viewModel: viewModel)
+            ToolbarItem(id: "toggle-inspector", placement: .automatic) {
+                Button {
+                    showRightSidebar.toggle()
+                } label: {
+                    Label("Inspector", systemImage: "sidebar.right")
+                }
+                .help("Toggle inspector sidebar")
+            }
         }
         .navigationTitle(navigationTitle)
         .onAppear {
@@ -208,6 +248,112 @@ struct ContentView: View {
     }
 
     // MARK: - Select Mode Toolbar
+
+    // MARK: - Observe Toolbar
+
+    private var observeToolbar: some View {
+        HStack(spacing: 12) {
+            // Zoom controls
+            Button {
+                viewModel.zoomLevel = max(0.25, viewModel.zoomLevel - 0.25)
+            } label: {
+                Image(systemName: "minus.magnifyingglass")
+            }
+            .buttonStyle(.bordered)
+            .help("Zoom out")
+
+            TextField("", text: $zoomText)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 66)
+                .monospacedDigit()
+                .multilineTextAlignment(.center)
+                .onSubmit {
+                    applyZoomFromText()
+                }
+                .onChange(of: viewModel.zoomLevel) { _, newValue in
+                    zoomText = "\(Int(newValue * 100))%"
+                }
+
+            Button {
+                viewModel.zoomLevel = min(5.0, viewModel.zoomLevel + 0.25)
+            } label: {
+                Image(systemName: "plus.magnifyingglass")
+            }
+            .buttonStyle(.bordered)
+            .help("Zoom in")
+
+            Button {
+                viewModel.zoomLevel = 1.0
+            } label: {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+            }
+            .buttonStyle(.bordered)
+            .help("Reset zoom to 100%")
+
+            Divider()
+                .frame(height: 20)
+
+            // Search
+            HStack(spacing: 4) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("Search text...", text: $viewModel.searchText)
+                    .textFieldStyle(.plain)
+                    .frame(width: 180)
+                    .onSubmit {
+                        viewModel.performSearch()
+                    }
+                if !viewModel.searchText.isEmpty {
+                    Button {
+                        viewModel.searchText = ""
+                        viewModel.searchResults = []
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(RoundedRectangle(cornerRadius: 6).fill(.background))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
+
+            if !viewModel.searchResults.isEmpty {
+                Text("\(viewModel.currentSearchIndex + 1)/\(viewModel.searchResults.count)")
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+
+                Button {
+                    viewModel.previousSearchResult()
+                } label: {
+                    Image(systemName: "chevron.up")
+                }
+                .buttonStyle(.bordered)
+                .help("Previous result")
+
+                Button {
+                    viewModel.nextSearchResult()
+                } label: {
+                    Image(systemName: "chevron.down")
+                }
+                .buttonStyle(.bordered)
+                .help("Next result")
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 6)
+        .background(.bar)
+    }
+
+    private func applyZoomFromText() {
+        let cleaned = zoomText.replacingOccurrences(of: "%", with: "").trimmingCharacters(in: .whitespaces)
+        if let value = Double(cleaned), value > 0 {
+            viewModel.zoomLevel = min(5.0, max(0.1, value / 100.0))
+        }
+    }
 
     private var selectModeToolbar: some View {
         HStack(spacing: 12) {
@@ -605,26 +751,13 @@ struct ContentView: View {
         return false
     }
 
-    private var showInspector: Binding<Bool> {
-        Binding(
-            get: {
-                isCommentModeActive || isTextBoxModeActive || isDrawModeActive ||
-                viewModel.selectedAnnotationID != nil
-            },
-            set: { newValue in
-                if !newValue {
-                    viewModel.selectedAnnotationID = nil
-                    if isCommentModeActive || isTextBoxModeActive || isDrawModeActive {
-                        viewModel.toolMode = .select
-                    }
-                }
-            }
-        )
-    }
+    // showRightSidebar is a @State var toggled by the toolbar button
 
     @ViewBuilder
     private var inspectorContent: some View {
-        if isCommentModeActive || selectedIsComment {
+        if viewModel.toolMode.isFind && !viewModel.searchResults.isEmpty {
+            searchResultsPanel
+        } else if isCommentModeActive || selectedIsComment {
             CommentsPanel(
                 viewModel: viewModel,
                 selectedCommentID: selectedIsComment ? viewModel.selectedAnnotationID : nil
@@ -650,6 +783,68 @@ struct ContentView: View {
             Text("Select an annotation")
                 .foregroundStyle(.secondary)
         }
+    }
+
+    // MARK: - Search Results Panel
+
+    private var searchResultsPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Search Results")
+                .font(.headline)
+                .padding(.horizontal)
+                .padding(.top, 8)
+
+            Text("\(viewModel.searchResults.count) matches for \"\(viewModel.searchText)\"")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal)
+
+            List(Array(viewModel.searchResults.enumerated()), id: \.offset) { index, selection in
+                Button {
+                    viewModel.navigateToSearchResult(index)
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        if let page = selection.pages.first,
+                           let pdf = viewModel.pdfDocument {
+                            Text("Page \(pdf.index(for: page) + 1)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(searchContextString(for: selection))
+                            .font(.callout)
+                            .lineLimit(2)
+                    }
+                    .padding(.vertical, 2)
+                }
+                .buttonStyle(.plain)
+                .listRowBackground(
+                    index == viewModel.currentSearchIndex
+                        ? Color.accentColor.opacity(0.15)
+                        : Color.clear
+                )
+            }
+            .listStyle(.plain)
+        }
+    }
+
+    private func searchContextString(for selection: PDFSelection) -> String {
+        // Get surrounding text for context
+        guard let page = selection.pages.first else { return selection.string ?? "" }
+        let fullText = page.string ?? ""
+        let searchString = selection.string ?? viewModel.searchText
+
+        guard let range = fullText.range(of: searchString, options: .caseInsensitive) else {
+            return searchString
+        }
+
+        // Show some context around the match
+        let contextStart = fullText.index(range.lowerBound, offsetBy: -30, limitedBy: fullText.startIndex) ?? fullText.startIndex
+        let contextEnd = fullText.index(range.upperBound, offsetBy: 30, limitedBy: fullText.endIndex) ?? fullText.endIndex
+        var context = String(fullText[contextStart..<contextEnd])
+            .replacingOccurrences(of: "\n", with: " ")
+        if contextStart != fullText.startIndex { context = "..." + context }
+        if contextEnd != fullText.endIndex { context = context + "..." }
+        return context
     }
 
     // MARK: - Delete Page Confirmation

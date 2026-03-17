@@ -29,6 +29,9 @@ struct ThumbnailSidebar: View {
                 }
                 .padding(8)
             }
+            .onAppear {
+                scrollProxy.scrollTo(viewModel.currentPageIndex, anchor: .center)
+            }
             .onChange(of: viewModel.currentPageIndex) { _, newIndex in
                 withAnimation {
                     scrollProxy.scrollTo(newIndex, anchor: .center)
