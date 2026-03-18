@@ -110,12 +110,32 @@ struct PDFCanvasView: NSViewRepresentable {
         _ = viewModel.selectMode
         if viewModel.toolMode == .tableSelect {
             pdfView.overrideCursor = .crosshair
-        } else if viewModel.toolMode == .select && viewModel.selectMode == .boxSelect {
+        } else if viewModel.toolMode == .browse && viewModel.selectMode == .boxSelect {
             pdfView.overrideCursor = .crosshair
         } else if viewModel.toolMode == .removeMarkup {
             pdfView.overrideCursor = Self.eraserCursor
         } else {
             pdfView.overrideCursor = nil
+        }
+
+        // Sync search highlights
+        let searchRevision = viewModel.searchHighlightRevision
+        if searchRevision != context.coordinator.lastSearchHighlightRevision {
+            context.coordinator.lastSearchHighlightRevision = searchRevision
+            if !viewModel.searchResults.isEmpty {
+                // Highlight all results, set current result as selection
+                pdfView.highlightedSelections = viewModel.searchResults
+                let current = viewModel.searchResults[viewModel.currentSearchIndex]
+                pdfView.setCurrentSelection(current, animate: true)
+                // Scroll to the current result
+                if let page = current.pages.first {
+                    let bounds = current.bounds(for: page)
+                    pdfView.go(to: bounds, on: page)
+                }
+            } else {
+                pdfView.highlightedSelections = nil
+                pdfView.clearSelection()
+            }
         }
 
         // If user switched to a markup tool with existing text selection, apply it

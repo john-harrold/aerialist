@@ -80,6 +80,11 @@ struct SpindriftApp: App {
                 }
                 .keyboardShortcut("n", modifiers: .command)
 
+                Button("New from Clipboard") {
+                    newFromClipboard()
+                }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+
                 Button("Open...") {
                     openFilePanel()
                 }
@@ -129,6 +134,63 @@ struct SpindriftApp: App {
             HelpView()
         }
         .defaultSize(width: 700, height: 500)
+    }
+
+    private func newFromClipboard() {
+        let pasteboard = NSPasteboard.general
+
+        // Try PDF data
+        if let pdfData = pasteboard.data(forType: .pdf) {
+            saveAndOpenPDF(data: pdfData, name: "From Clipboard.pdf")
+            return
+        }
+
+        // Try image data (TIFF is the native pasteboard format for images)
+        if let tiffData = pasteboard.data(forType: .tiff),
+           let image = NSImage(data: tiffData) {
+            let pdf = PDFDocument()
+            let page = PDFPage(image: image)!
+            pdf.insert(page, at: 0)
+            if let data = pdf.dataRepresentation() {
+                saveAndOpenPDF(data: data, name: "From Clipboard.pdf")
+                return
+            }
+        }
+
+        // Try PNG
+        if let pngData = pasteboard.data(forType: .png),
+           let image = NSImage(data: pngData),
+           let page = PDFPage(image: image) {
+            let pdf = PDFDocument()
+            pdf.insert(page, at: 0)
+            if let data = pdf.dataRepresentation() {
+                saveAndOpenPDF(data: data, name: "From Clipboard.pdf")
+                return
+            }
+        }
+
+        // Nothing usable
+        let alert = NSAlert()
+        alert.messageText = "No compatible content on clipboard"
+        alert.informativeText = "Copy a PDF, image, or screenshot to the clipboard first."
+        alert.alertStyle = .informational
+        alert.runModal()
+    }
+
+    private func saveAndOpenPDF(data: Data, name: String) {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("pdf")
+        do {
+            try data.write(to: tempURL)
+            NSDocumentController.shared.openDocument(
+                withContentsOf: tempURL,
+                display: true
+            ) { _, _, _ in }
+        } catch {
+            let alert = NSAlert(error: error)
+            alert.runModal()
+        }
     }
 
     private func openFilePanel() {

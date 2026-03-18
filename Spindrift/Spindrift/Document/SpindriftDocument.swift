@@ -202,8 +202,9 @@ final class SpindriftDocument: ReferenceFileDocument, @unchecked Sendable {
                     continue
                 }
 
-                // Check if this is a tagged Spindrift annotation
-                guard let (type, id) = parseAnnotationTag(annotation.userName) else { continue }
+                // Check if this is a tagged Spindrift annotation (try userName first, then contents as fallback)
+                guard let (type, id) = parseAnnotationTag(annotation.userName)
+                        ?? parseAnnotationTag(annotation.contents) else { continue }
                 foundIDs.insert(id)
 
                 let currentBounds = AnnotationBounds(annotation.bounds)
@@ -509,15 +510,25 @@ final class SpindriftDocument: ReferenceFileDocument, @unchecked Sendable {
         return annotation
     }
 
-    /// Create a standard `.stamp` annotation for image stamps.
+    /// Create a stamp annotation with image drawn via NSImage.draw() for AP stream compatibility.
     private static func makeStandardStamp(from model: StampAnnotationModel) -> PDFAnnotation {
         let tag = annotationTag(type: "stamp", id: model.id)
-        let annotation = PDFAnnotation(
+        guard let imageData = Data(base64Encoded: model.imageData),
+              let image = NSImage(data: imageData) else {
+            let fallback = PDFAnnotation(bounds: model.bounds.cgRect, forType: .stamp, withProperties: nil)
+            fallback.userName = tag
+            fallback.contents = tag
+            return fallback
+        }
+
+        let annotation = SaveStampAnnotation(
             bounds: model.bounds.cgRect,
-            forType: .stamp,
-            withProperties: nil
+            image: image,
+            opacity: model.opacity,
+            rotation: model.rotation
         )
         annotation.userName = tag
+        annotation.contents = tag
         return annotation
     }
 
@@ -580,3 +591,42 @@ final class SpindriftDocument: ReferenceFileDocument, @unchecked Sendable {
         }
     }
 }
+
+/// Stamp annotation that draws its image via NSImage.draw() so the appearance stream
+/// captures the image data properly for Preview and other PDF readers.
+private class SaveStampAnnotation: PDFAnnotation {
+    let image: NSImage
+    let stampOpacity: CGFloat
+    let stampRotation: CGFloat
+
+    init(bounds: CGRect, image: NSImage, opacity: CGFloat, rotation: CGFloat) {
+        self.image = image
+        self.stampOpacity = opacity
+        self.stampRotation = rotation
+        super.init(bounds: bounds, forType: .stamp, withProperties: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) not supported")
+    }
+
+    override func draw(with box: PDFDisplayBox, in context: CGContext) {
+        // Use NSImage.draw() via NSGraphicsContext — this gets properly recorded
+        // into the PDF appearance stream, unlike CGContext.draw(cgImage:in:)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+
+        if stampRotation != 0 {
+            let transform = NSAffineTransform()
+            transform.translateX(by: bounds.midX, yBy: bounds.midY)
+            transform.rotate(byDegrees: stampRotation)
+            transform.translateX(by: -bounds.midX, yBy: -bounds.midY)
+            transform.concat()
+        }
+
+        image.draw(in: bounds, from: .zero, operation: .sourceOver, fraction: stampOpacity)
+
+        NSGraphicsContext.restoreGraphicsState()
+    }
+}
+

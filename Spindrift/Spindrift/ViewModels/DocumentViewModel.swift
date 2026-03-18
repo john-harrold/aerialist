@@ -3,8 +3,7 @@ import PDFKit
 import AppKit
 
 enum ToolMode: String, CaseIterable, Identifiable {
-    case find = "Find"
-    case select = "Select"
+    case browse = "Browse"
     case stamp = "Stamp"
     case textBox = "Text Box"
     case comment = "Comment"
@@ -19,8 +18,7 @@ enum ToolMode: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
-        case .find: return "magnifyingglass"
-        case .select: return "cursorarrow"
+        case .browse: return "cursorarrow.and.square.on.square.dashed"
         case .stamp: return "signature"
         case .textBox: return "textbox"
         case .comment: return "text.bubble"
@@ -35,11 +33,11 @@ enum ToolMode: String, CaseIterable, Identifiable {
 
     /// Modes shown in the main segmented picker (excludes markup tools)
     static var pickerCases: [ToolMode] {
-        [.find, .select, .stamp, .textBox, .comment, .draw]
+        [.browse, .stamp, .textBox, .comment, .draw]
     }
 
-    var isFind: Bool {
-        self == .find
+    var isBrowse: Bool {
+        self == .browse
     }
 
     /// Markup modes shown in the markup toolbar
@@ -111,13 +109,13 @@ struct HighlightColor: Identifiable, Equatable {
 @MainActor
 @Observable
 final class DocumentViewModel {
-    var toolMode: ToolMode = .select {
+    var toolMode: ToolMode = .browse {
         didSet {
             if !toolMode.isTableSelect && showTableToolbar {
                 showTableToolbar = false
                 clearTableSelection()
             }
-            if toolMode != .select {
+            if toolMode != .browse {
                 clearBoxSelection()
             }
         }
@@ -146,12 +144,8 @@ final class DocumentViewModel {
     var searchResults: [PDFSelection] = []
     var currentSearchIndex: Int = 0
 
-    func performSearch() {
-        searchResults = []
-        currentSearchIndex = 0
-        guard !searchText.isEmpty, let pdf = pdfDocument else { return }
-        searchResults = pdf.findString(searchText, withOptions: .caseInsensitive)
-    }
+    /// Revision counter to trigger PDFView search highlight updates.
+    var searchHighlightRevision: Int = 0
 
     func navigateToSearchResult(_ index: Int) {
         guard index >= 0, index < searchResults.count,
@@ -160,6 +154,18 @@ final class DocumentViewModel {
         currentSearchIndex = index
         let pageIndex = pdf.index(for: page)
         goToPage(pageIndex)
+        searchHighlightRevision += 1
+    }
+
+    func performSearch() {
+        searchResults = []
+        currentSearchIndex = 0
+        guard !searchText.isEmpty, let pdf = pdfDocument else {
+            searchHighlightRevision += 1
+            return
+        }
+        searchResults = pdf.findString(searchText, withOptions: .caseInsensitive)
+        searchHighlightRevision += 1
     }
 
     func nextSearchResult() {
@@ -180,6 +186,7 @@ final class DocumentViewModel {
     var ocrCompletedPages: Int = 0
     var ocrIsComplete = false
     var ocrError: String?
+    var ocrStatusMessage: String?
 
     @ObservationIgnored var ocrTask: Task<Void, Never>?
 
@@ -415,12 +422,20 @@ final class DocumentViewModel {
     func startOCRCurrentPage() {
         ocrTask?.cancel()
         ocrError = nil
+        ocrStatusMessage = "Running OCR on page \(currentPageIndex + 1)..."
         ocrTask = Task {
             do {
                 try await ocrCurrentPage()
+                ocrStatusMessage = "OCR complete — page \(currentPageIndex + 1)"
+                // Clear after 3 seconds
+                try? await Task.sleep(for: .seconds(3))
+                if ocrStatusMessage?.hasPrefix("OCR complete") == true {
+                    ocrStatusMessage = nil
+                }
             } catch {
                 if !Task.isCancelled {
                     ocrError = error.localizedDescription
+                    ocrStatusMessage = nil
                 }
             }
         }

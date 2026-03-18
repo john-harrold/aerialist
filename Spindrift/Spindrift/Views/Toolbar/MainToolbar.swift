@@ -4,12 +4,8 @@ struct MainToolbar: CustomizableToolbarContent {
     @Bindable var viewModel: DocumentViewModel
 
     var body: some CustomizableToolbarContent {
-        ToolbarItem(id: "tool-find") {
-            toolButton(for: .find, tooltip: "Find text, zoom")
-        }
-
-        ToolbarItem(id: "tool-select") {
-            toolButton(for: .select, tooltip: "Select and move annotations")
+        ToolbarItem(id: "tool-browse") {
+            toolButton(for: .browse, tooltip: "Browse, search, select, and zoom")
         }
 
         ToolbarItem(id: "tool-stamp") {
@@ -32,7 +28,7 @@ struct MainToolbar: CustomizableToolbarContent {
             Button {
                 viewModel.showOCRToolbar = false
                 if viewModel.toolMode.isMarkup {
-                    viewModel.toolMode = .select
+                    viewModel.toolMode = .browse
                 } else {
                     viewModel.toolMode = .highlight
                 }
@@ -47,7 +43,7 @@ struct MainToolbar: CustomizableToolbarContent {
             Button {
                 viewModel.showOCRToolbar.toggle()
                 if viewModel.showOCRToolbar && viewModel.toolMode.isMarkup {
-                    viewModel.toolMode = .select
+                    viewModel.toolMode = .browse
                 }
                 if viewModel.showOCRToolbar {
                     viewModel.showTableToolbar = false
@@ -65,12 +61,12 @@ struct MainToolbar: CustomizableToolbarContent {
                 if viewModel.showTableToolbar {
                     viewModel.showOCRToolbar = false
                     if viewModel.toolMode.isMarkup {
-                        viewModel.toolMode = .select
+                        viewModel.toolMode = .browse
                     }
                     viewModel.toolMode = .tableSelect
                 } else {
                     if viewModel.toolMode == .tableSelect {
-                        viewModel.toolMode = .select
+                        viewModel.toolMode = .browse
                     }
                     viewModel.clearTableSelection()
                 }

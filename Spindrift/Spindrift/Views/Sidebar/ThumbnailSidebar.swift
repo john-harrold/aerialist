@@ -4,6 +4,7 @@ import PDFKit
 struct ThumbnailSidebar: View {
     @Bindable var viewModel: DocumentViewModel
     @State private var lastClickedIndex: Int?
+    @FocusState private var isFocused: Bool
 
     var body: some View {
         ScrollViewReader { scrollProxy in
@@ -19,6 +20,7 @@ struct ThumbnailSidebar: View {
                             )
                             .id(index)
                             .onTapGesture {
+                                isFocused = true
                                 handleTap(index: index, pageCount: pdf.pageCount)
                             }
                             .contextMenu {
@@ -28,6 +30,20 @@ struct ThumbnailSidebar: View {
                     }
                 }
                 .padding(8)
+            }
+            .focusable()
+            .focused($isFocused)
+            .onKeyPress(.upArrow) {
+                guard let pdf = viewModel.pdfDocument, pdf.pageCount > 0 else { return .ignored }
+                let newIndex = max(0, viewModel.currentPageIndex - 1)
+                viewModel.goToPage(newIndex)
+                return .handled
+            }
+            .onKeyPress(.downArrow) {
+                guard let pdf = viewModel.pdfDocument, pdf.pageCount > 0 else { return .ignored }
+                let newIndex = min(pdf.pageCount - 1, viewModel.currentPageIndex + 1)
+                viewModel.goToPage(newIndex)
+                return .handled
             }
             .onAppear {
                 scrollProxy.scrollTo(viewModel.currentPageIndex, anchor: .center)

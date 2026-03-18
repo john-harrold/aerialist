@@ -6,6 +6,7 @@ extension View {
     func activeButtonStyle(_ isActive: Bool) -> some View {
         if isActive {
             self.buttonStyle(.borderedProminent)
+                .tint(.accentColor)
         } else {
             self.buttonStyle(.bordered)
         }
@@ -18,7 +19,9 @@ struct ContentView: View {
     @State private var sidebarMode: SidebarMode = .thumbnails
     @State private var showLeftSidebar = true
     @State private var showRightSidebar = true
+    @State private var sidebarWidth: CGFloat = 180
     @State private var zoomText = "100%"
+    @FocusState private var isSearchFieldFocused: Bool
     @Environment(\.undoManager) private var undoManager
 
     enum SidebarMode: String, CaseIterable {
@@ -27,197 +30,66 @@ struct ContentView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            if showLeftSidebar {
-                VStack(spacing: 0) {
-                    Picker("", selection: $sidebarMode) {
-                        ForEach(SidebarMode.allCases, id: \.self) { mode in
-                            Text(mode.rawValue).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(8)
+        bodyCore
+            .modifier(SheetModifiers(viewModel: viewModel,
+                                      deletePageDialogTitle: deletePageDialogTitle,
+                                      exportTableAsCSV: exportTableAsCSV,
+                                      exportTablesAsExcel: exportTablesAsExcel))
+    }
 
-                    switch sidebarMode {
-                    case .thumbnails:
-                        ThumbnailSidebar(viewModel: viewModel)
-                    case .outline:
-                        OutlineSidebar(pdfDocument: document.pdfDocument, viewModel: viewModel)
+    private var bodyCore: some View {
+        mainLayout
+            .inspector(isPresented: $showRightSidebar) {
+                inspectorContent
+                    .inspectorColumnWidth(min: 220, ideal: 260, max: 300)
+            }
+            .toolbar(id: "main") {
+                ToolbarItem(id: "toggle-sidebar", placement: .automatic) {
+                    Button {
+                        withAnimation { showLeftSidebar.toggle() }
+                    } label: {
+                        Label("Sidebar", systemImage: "sidebar.left")
                     }
+                    .help("Toggle left sidebar")
                 }
-                .frame(width: 160)
-
-                Divider()
-            }
-
-            VStack(spacing: 0) {
-                if viewModel.showOCRToolbar {
-                    ocrToolbar
-                } else if viewModel.showTableToolbar {
-                    tableToolbar
-                } else if viewModel.toolMode.isFind {
-                    observeToolbar
-                } else if viewModel.toolMode == .select {
-                    selectModeToolbar
-                } else if viewModel.toolMode.isStamp {
-                    stampToolbar
-                } else if viewModel.toolMode.isMarkup {
-                    markupToolbar
-                } else if viewModel.toolMode.isDraw {
-                    drawToolbar
-                }
-                PDFCanvasView(
-                    pdfDocument: document.pdfDocument,
-                    viewModel: viewModel
-                )
-                .overlay(alignment: .topLeading) {
-                    toolModeHint
-                }
-            }
-        }
-        .inspector(isPresented: $showRightSidebar) {
-            inspectorContent
-                .inspectorColumnWidth(min: 220, ideal: 260, max: 300)
-        }
-        .toolbar(id: "main") {
-            ToolbarItem(id: "toggle-sidebar", placement: .automatic) {
-                Button {
-                    withAnimation {
-                        showLeftSidebar.toggle()
+                MainToolbar(viewModel: viewModel)
+                ToolbarItem(id: "toggle-inspector", placement: .automatic) {
+                    Button {
+                        showRightSidebar.toggle()
+                    } label: {
+                        Label("Inspector", systemImage: "sidebar.right")
                     }
-                } label: {
-                    Label("Sidebar", systemImage: "sidebar.left")
+                    .help("Toggle inspector sidebar")
                 }
-                .help("Toggle left sidebar")
             }
-            MainToolbar(viewModel: viewModel)
-            ToolbarItem(id: "toggle-inspector", placement: .automatic) {
-                Button {
-                    showRightSidebar.toggle()
-                } label: {
-                    Label("Inspector", systemImage: "sidebar.right")
+            .navigationTitle(navigationTitle)
+            .onAppear {
+                viewModel.document = document
+                viewModel.sidecar = document.sidecar
+                viewModel.undoManager = undoManager
+            }
+            .onChange(of: undoManager) { _, newValue in
+                viewModel.undoManager = newValue
+            }
+            .background {
+                Button("") {
+                    viewModel.toolMode = .browse
+                    isSearchFieldFocused = true
                 }
-                .help("Toggle inspector sidebar")
+                .keyboardShortcut("f", modifiers: .command)
+                .hidden()
             }
-        }
-        .navigationTitle(navigationTitle)
-        .onAppear {
-            viewModel.document = document
-            viewModel.sidecar = document.sidecar
-            viewModel.undoManager = undoManager
-        }
-        .onChange(of: undoManager) { _, newValue in
-            viewModel.undoManager = newValue
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .exportAsPDF)) { _ in
-            exportAsPDF()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .ocrCurrentPage)) { _ in
-            viewModel.startOCRCurrentPage()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .ocrAllPages)) { _ in
-            viewModel.startOCRAllPages()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .combineFiles)) { _ in
-            viewModel.showCombineSheet = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .exportAsWord)) { _ in
-            exportAsWord()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .exportAsText)) { _ in
-            exportAsText()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .tableSelect)) { _ in
-            viewModel.showTableToolbar = true
-            viewModel.showOCRToolbar = false
-            viewModel.toolMode = .tableSelect
-        }
-        .sheet(isPresented: $viewModel.showStampPicker) {
-            StampPickerSheet { imageData in
-                viewModel.addStamp(imageData: imageData)
-                viewModel.toolMode = .select
+            .onReceive(NotificationCenter.default.publisher(for: .exportAsPDF)) { _ in exportAsPDF() }
+            .onReceive(NotificationCenter.default.publisher(for: .ocrCurrentPage)) { _ in viewModel.startOCRCurrentPage() }
+            .onReceive(NotificationCenter.default.publisher(for: .ocrAllPages)) { _ in viewModel.startOCRAllPages() }
+            .onReceive(NotificationCenter.default.publisher(for: .combineFiles)) { _ in viewModel.showCombineSheet = true }
+            .onReceive(NotificationCenter.default.publisher(for: .exportAsWord)) { _ in exportAsWord() }
+            .onReceive(NotificationCenter.default.publisher(for: .exportAsText)) { _ in exportAsText() }
+            .onReceive(NotificationCenter.default.publisher(for: .tableSelect)) { _ in
+                viewModel.showTableToolbar = true
+                viewModel.showOCRToolbar = false
+                viewModel.toolMode = .tableSelect
             }
-        }
-        .sheet(isPresented: $viewModel.showCombineSheet) {
-            CombineFilesSheet { combinedPDF in
-                viewModel.applyCombinedDocument(combinedPDF)
-            }
-        }
-        .confirmationDialog(
-            deletePageDialogTitle,
-            isPresented: $viewModel.showDeletePageConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Delete", role: .destructive) {
-                viewModel.executePendingPageDeletion()
-            }
-            Button("Cancel", role: .cancel) {
-                viewModel.pendingDeletePageIndices = []
-            }
-        }
-        .sheet(isPresented: $viewModel.showOCRProgress) {
-            OCRProgressSheet(
-                totalPages: viewModel.pageCount,
-                completedPages: $viewModel.ocrCompletedPages,
-                isComplete: $viewModel.ocrIsComplete,
-                onCancel: { viewModel.cancelOCR() }
-            )
-        }
-        .alert(
-            "OCR Error",
-            isPresented: Binding(
-                get: { viewModel.ocrError != nil },
-                set: { if !$0 { viewModel.ocrError = nil } }
-            )
-        ) {
-            Button("OK") { viewModel.ocrError = nil }
-        } message: {
-            Text(viewModel.ocrError ?? "")
-        }
-        .sheet(isPresented: $viewModel.showWordExportProgress) {
-            ExportProgressSheet(
-                title: "Exporting as Word",
-                totalPages: viewModel.pageCount,
-                completedPages: $viewModel.wordExportCompletedPages,
-                isComplete: $viewModel.wordExportIsComplete,
-                completionMessage: "Word export complete!",
-                onCancel: { viewModel.cancelWordExport() }
-            )
-        }
-        .alert(
-            "Word Export Error",
-            isPresented: Binding(
-                get: { viewModel.wordExportError != nil },
-                set: { if !$0 { viewModel.wordExportError = nil } }
-            )
-        ) {
-            Button("OK") { viewModel.wordExportError = nil }
-        } message: {
-            Text(viewModel.wordExportError ?? "")
-        }
-        .sheet(isPresented: $viewModel.showTablePreview) {
-            TablePreviewSheet(
-                tables: viewModel.extractedTables,
-                initialPageIndex: viewModel.currentPageIndex,
-                pdfDocument: viewModel.pdfDocument,
-                onExportCSV: { table in exportTableAsCSV(table) },
-                onExportAllExcel: { exportTablesAsExcel(viewModel.extractedTables) },
-                onReExtractWithGrid: { index, cols, rows in
-                    viewModel.reExtractWithGrid(tableIndex: index, colPositions: cols, rowPositions: rows)
-                }
-            )
-        }
-        .alert(
-            "Table Export Error",
-            isPresented: Binding(
-                get: { viewModel.tableExportError != nil },
-                set: { if !$0 { viewModel.tableExportError = nil } }
-            )
-        ) {
-            Button("OK") { viewModel.tableExportError = nil }
-        } message: {
-            Text(viewModel.tableExportError ?? "")
-        }
     }
 
     // MARK: - Navigation Title
@@ -249,114 +121,87 @@ struct ContentView: View {
 
     // MARK: - Select Mode Toolbar
 
-    // MARK: - Observe Toolbar
+    // MARK: - Layout
 
-    private var observeToolbar: some View {
-        HStack(spacing: 12) {
-            // Zoom controls
-            Button {
-                viewModel.zoomLevel = max(0.25, viewModel.zoomLevel - 0.25)
-            } label: {
-                Image(systemName: "minus.magnifyingglass")
+    private var mainLayout: some View {
+        HStack(spacing: 0) {
+            if showLeftSidebar {
+                leftSidebar
             }
-            .buttonStyle(.bordered)
-            .help("Zoom out")
-
-            TextField("", text: $zoomText)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 66)
-                .monospacedDigit()
-                .multilineTextAlignment(.center)
-                .onSubmit {
-                    applyZoomFromText()
-                }
-                .onChange(of: viewModel.zoomLevel) { _, newValue in
-                    zoomText = "\(Int(newValue * 100))%"
-                }
-
-            Button {
-                viewModel.zoomLevel = min(5.0, viewModel.zoomLevel + 0.25)
-            } label: {
-                Image(systemName: "plus.magnifyingglass")
-            }
-            .buttonStyle(.bordered)
-            .help("Zoom in")
-
-            Button {
-                viewModel.zoomLevel = 1.0
-            } label: {
-                Image(systemName: "arrow.up.left.and.arrow.down.right")
-            }
-            .buttonStyle(.bordered)
-            .help("Reset zoom to 100%")
-
-            Divider()
-                .frame(height: 20)
-
-            // Search
-            HStack(spacing: 4) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField("Search text...", text: $viewModel.searchText)
-                    .textFieldStyle(.plain)
-                    .frame(width: 180)
-                    .onSubmit {
-                        viewModel.performSearch()
-                    }
-                if !viewModel.searchText.isEmpty {
-                    Button {
-                        viewModel.searchText = ""
-                        viewModel.searchResults = []
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(RoundedRectangle(cornerRadius: 6).fill(.background))
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
-
-            if !viewModel.searchResults.isEmpty {
-                Text("\(viewModel.currentSearchIndex + 1)/\(viewModel.searchResults.count)")
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-
-                Button {
-                    viewModel.previousSearchResult()
-                } label: {
-                    Image(systemName: "chevron.up")
-                }
-                .buttonStyle(.bordered)
-                .help("Previous result")
-
-                Button {
-                    viewModel.nextSearchResult()
-                } label: {
-                    Image(systemName: "chevron.down")
-                }
-                .buttonStyle(.bordered)
-                .help("Next result")
-            }
-
-            Spacer()
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 6)
-        .background(.bar)
-    }
-
-    private func applyZoomFromText() {
-        let cleaned = zoomText.replacingOccurrences(of: "%", with: "").trimmingCharacters(in: .whitespaces)
-        if let value = Double(cleaned), value > 0 {
-            viewModel.zoomLevel = min(5.0, max(0.1, value / 100.0))
+            mainContent
         }
     }
 
-    private var selectModeToolbar: some View {
+    private var leftSidebar: some View {
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                Picker("", selection: $sidebarMode) {
+                    ForEach(SidebarMode.allCases, id: \.self) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(8)
+
+                switch sidebarMode {
+                case .thumbnails:
+                    ThumbnailSidebar(viewModel: viewModel)
+                case .outline:
+                    OutlineSidebar(pdfDocument: document.pdfDocument, viewModel: viewModel)
+                }
+            }
+            .frame(width: sidebarWidth)
+
+            Rectangle()
+                .fill(Color.gray.opacity(0.01))
+                .frame(width: 6)
+                .overlay(Divider())
+                .onHover { hovering in
+                    if hovering {
+                        NSCursor.resizeLeftRight.push()
+                    } else {
+                        NSCursor.pop()
+                    }
+                }
+                .gesture(
+                    DragGesture(minimumDistance: 1)
+                        .onChanged { value in
+                            sidebarWidth = min(500, max(120, sidebarWidth + value.translation.width))
+                        }
+                )
+        }
+    }
+
+    private var mainContent: some View {
+        VStack(spacing: 0) {
+            if viewModel.showOCRToolbar {
+                ocrToolbar
+            } else if viewModel.showTableToolbar {
+                tableToolbar
+            } else if viewModel.toolMode.isBrowse {
+                browseToolbar
+            } else if viewModel.toolMode.isStamp {
+                stampToolbar
+            } else if viewModel.toolMode.isMarkup {
+                markupToolbar
+            } else if viewModel.toolMode.isDraw {
+                drawToolbar
+            }
+            PDFCanvasView(
+                pdfDocument: document.pdfDocument,
+                viewModel: viewModel
+            )
+            .overlay(alignment: .topLeading) {
+                toolModeHint
+            }
+        }
+    }
+
+    // MARK: - Browse Toolbar
+
+    private var browseToolbar: some View {
         HStack(spacing: 12) {
+            // Select mode (text / box)
             HStack(spacing: 2) {
                 ForEach(SelectMode.allCases) { mode in
                     Button {
@@ -405,11 +250,110 @@ struct ContentView: View {
                 .help("Clear selection (Escape)")
             }
 
+            Divider()
+                .frame(height: 20)
+
+            // Zoom controls
+            Button {
+                viewModel.zoomLevel = max(0.25, viewModel.zoomLevel - 0.25)
+            } label: {
+                Image(systemName: "minus.magnifyingglass")
+            }
+            .buttonStyle(.bordered)
+            .help("Zoom out")
+
+            TextField("", text: $zoomText)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 66)
+                .monospacedDigit()
+                .multilineTextAlignment(.center)
+                .onSubmit {
+                    applyZoomFromText()
+                }
+                .onChange(of: viewModel.zoomLevel) { _, newValue in
+                    zoomText = "\(Int(newValue * 100))%"
+                }
+
+            Button {
+                viewModel.zoomLevel = min(5.0, viewModel.zoomLevel + 0.25)
+            } label: {
+                Image(systemName: "plus.magnifyingglass")
+            }
+            .buttonStyle(.bordered)
+            .help("Zoom in")
+
+            Button {
+                viewModel.zoomLevel = 1.0
+            } label: {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+            }
+            .buttonStyle(.bordered)
+            .help("Reset zoom to 100%")
+
+            Divider()
+                .frame(height: 20)
+
+            // Search
+            HStack(spacing: 4) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("Search text...", text: $viewModel.searchText)
+                    .textFieldStyle(.plain)
+                    .frame(width: 180)
+                    .focused($isSearchFieldFocused)
+                    .onSubmit {
+                        viewModel.performSearch()
+                    }
+                if !viewModel.searchText.isEmpty {
+                    Button {
+                        viewModel.searchText = ""
+                        viewModel.searchResults = []
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(RoundedRectangle(cornerRadius: 6).fill(.background))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
+
+            if !viewModel.searchResults.isEmpty {
+                Text("\(viewModel.currentSearchIndex + 1)/\(viewModel.searchResults.count)")
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+
+                Button {
+                    viewModel.previousSearchResult()
+                } label: {
+                    Image(systemName: "chevron.up")
+                }
+                .buttonStyle(.bordered)
+                .help("Previous result")
+
+                Button {
+                    viewModel.nextSearchResult()
+                } label: {
+                    Image(systemName: "chevron.down")
+                }
+                .buttonStyle(.bordered)
+                .help("Next result")
+            }
+
             Spacer()
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(.bar)
+    }
+
+    private func applyZoomFromText() {
+        let cleaned = zoomText.replacingOccurrences(of: "%", with: "").trimmingCharacters(in: .whitespaces)
+        if let value = Double(cleaned), value > 0 {
+            viewModel.zoomLevel = min(5.0, max(0.1, value / 100.0))
+        }
     }
 
     // MARK: - Stamp Toolbar
@@ -489,6 +433,21 @@ struct ContentView: View {
                 Label("All Pages", systemImage: "doc.on.doc")
             }
             .buttonStyle(.bordered)
+
+            if let status = viewModel.ocrStatusMessage {
+                HStack(spacing: 6) {
+                    if status.hasPrefix("Running") {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    }
+                    Text(status)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            }
 
             Spacer()
         }
@@ -755,7 +714,7 @@ struct ContentView: View {
 
     @ViewBuilder
     private var inspectorContent: some View {
-        if viewModel.toolMode.isFind && !viewModel.searchResults.isEmpty {
+        if viewModel.toolMode.isBrowse && !viewModel.searchResults.isEmpty {
             searchResultsPanel
         } else if isCommentModeActive || selectedIsComment {
             CommentsPanel(
@@ -943,5 +902,117 @@ struct ContentView: View {
                 viewModel.tableExportError = error.localizedDescription
             }
         }
+    }
+}
+
+// MARK: - Sheet Modifiers (extracted to help the type checker)
+
+private struct SheetModifiers: ViewModifier {
+    @Bindable var viewModel: DocumentViewModel
+    let deletePageDialogTitle: String
+    let exportTableAsCSV: (TableExtractionService.ExtractedTable) -> Void
+    let exportTablesAsExcel: ([TableExtractionService.ExtractedTable]) -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(isPresented: $viewModel.showStampPicker) {
+                StampPickerSheet { imageData in
+                    viewModel.addStamp(imageData: imageData)
+                    viewModel.toolMode = .browse
+                }
+            }
+            .sheet(isPresented: $viewModel.showCombineSheet) {
+                CombineFilesSheet { combinedPDF in
+                    viewModel.applyCombinedDocument(combinedPDF)
+                }
+            }
+            .confirmationDialog(
+                deletePageDialogTitle,
+                isPresented: $viewModel.showDeletePageConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) {
+                    viewModel.executePendingPageDeletion()
+                }
+                Button("Cancel", role: .cancel) {
+                    viewModel.pendingDeletePageIndices = []
+                }
+            }
+            .modifier(OCRAndExportSheets(viewModel: viewModel,
+                                          exportTableAsCSV: exportTableAsCSV,
+                                          exportTablesAsExcel: exportTablesAsExcel))
+    }
+}
+
+private struct OCRAndExportSheets: ViewModifier {
+    @Bindable var viewModel: DocumentViewModel
+    let exportTableAsCSV: (TableExtractionService.ExtractedTable) -> Void
+    let exportTablesAsExcel: ([TableExtractionService.ExtractedTable]) -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(isPresented: $viewModel.showOCRProgress) {
+                OCRProgressSheet(
+                    totalPages: viewModel.pageCount,
+                    completedPages: $viewModel.ocrCompletedPages,
+                    isComplete: $viewModel.ocrIsComplete,
+                    onCancel: { viewModel.cancelOCR() }
+                )
+            }
+            .alert(
+                "OCR Error",
+                isPresented: Binding(
+                    get: { viewModel.ocrError != nil },
+                    set: { if !$0 { viewModel.ocrError = nil } }
+                )
+            ) {
+                Button("OK") { viewModel.ocrError = nil }
+            } message: {
+                Text(viewModel.ocrError ?? "")
+            }
+            .sheet(isPresented: $viewModel.showWordExportProgress) {
+                ExportProgressSheet(
+                    title: "Exporting as Word",
+                    totalPages: viewModel.pageCount,
+                    completedPages: $viewModel.wordExportCompletedPages,
+                    isComplete: $viewModel.wordExportIsComplete,
+                    completionMessage: "Word export complete!",
+                    onCancel: { viewModel.cancelWordExport() }
+                )
+            }
+            .alert(
+                "Word Export Error",
+                isPresented: Binding(
+                    get: { viewModel.wordExportError != nil },
+                    set: { if !$0 { viewModel.wordExportError = nil } }
+                )
+            ) {
+                Button("OK") { viewModel.wordExportError = nil }
+            } message: {
+                Text(viewModel.wordExportError ?? "")
+            }
+            .sheet(isPresented: $viewModel.showTablePreview) {
+                TablePreviewSheet(
+                    tables: viewModel.extractedTables,
+                    initialPageIndex: viewModel.currentPageIndex,
+                    pdfDocument: viewModel.pdfDocument,
+                    onExportCSV: { table in exportTableAsCSV(table) },
+                    onExportAllExcel: { exportTablesAsExcel(viewModel.extractedTables) },
+                    onReExtractWithGrid: { index, cols, rows in
+                        viewModel.reExtractWithGrid(tableIndex: index, colPositions: cols, rowPositions: rows)
+                    }
+                )
+            }
+            .alert(
+                "Table Export Error",
+                isPresented: Binding(
+                    get: { viewModel.tableExportError != nil },
+                    set: { if !$0 { viewModel.tableExportError = nil } }
+                )
+            ) {
+                Button("OK") { viewModel.tableExportError = nil }
+            } message: {
+                Text(viewModel.tableExportError ?? "")
+            }
     }
 }

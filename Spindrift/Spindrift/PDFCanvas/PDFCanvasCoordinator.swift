@@ -19,13 +19,14 @@ class PDFCanvasCoordinator: NSObject, PDFViewDelegate {
     private var lastOverlaidOCR: [String: OCRPageResult]?
 
     /// Previous tool mode, to detect when user switches to a markup tool with existing selection
-    private var previousToolMode: ToolMode = .select
+    private var previousToolMode: ToolMode = .browse
 
     /// Last annotation revision that was synced, to avoid redundant sync work.
     private var lastSyncedRevision: Int = -1
 
     /// Whether the initial zoom-to-width has been applied.
     var hasSetInitialZoom = false
+    var lastSearchHighlightRevision = 0
 
     /// Shape creation state
     private var shapeCreationStart: CGPoint?
@@ -271,9 +272,6 @@ class PDFCanvasCoordinator: NSObject, PDFViewDelegate {
         preDragSidecar = nil
 
         switch viewModel.toolMode {
-        case .find:
-            // Observe mode: don't handle clicks, let PDFView handle text selection/scrolling
-            return false
         case .stamp:
             // Check if clicking any existing annotation first
             let stampHit = InteractionHandler.hitTest(
@@ -494,7 +492,7 @@ class PDFCanvasCoordinator: NSObject, PDFViewDelegate {
             syncTableSelectionOverlay()
             return true
 
-        case .select:
+        case .browse:
             // Box selection mode: handle box resize/move/draw before annotation hit-test
             if viewModel.selectMode == .boxSelect {
                 // Hit-test existing box selection for resize/move
@@ -639,7 +637,7 @@ class PDFCanvasCoordinator: NSObject, PDFViewDelegate {
 
         case .stamp(let id, let action):
             viewModel.selectedAnnotationID = id
-            viewModel.toolMode = .select
+            viewModel.toolMode = .browse
             if let idx = viewModel.sidecar.stamps.firstIndex(where: { $0.id == id }) {
                 let b = viewModel.sidecar.stamps[idx].bounds
                 preDragSidecar = viewModel.sidecar
@@ -829,7 +827,7 @@ class PDFCanvasCoordinator: NSObject, PDFViewDelegate {
 
     func handlePageDrag(page: PDFPage, point: CGPoint, pageIndex: Int) {
         // Handle box selection drawing drag
-        if let startPoint = boxSelectionStart, viewModel.toolMode == .select, viewModel.selectMode == .boxSelect {
+        if let startPoint = boxSelectionStart, viewModel.toolMode == .browse, viewModel.selectMode == .boxSelect {
             let minX = min(startPoint.x, point.x)
             let minY = min(startPoint.y, point.y)
             let w = abs(point.x - startPoint.x)
@@ -1075,7 +1073,7 @@ class PDFCanvasCoordinator: NSObject, PDFViewDelegate {
 
     func handlePageMouseUp(page: PDFPage, point: CGPoint, pageIndex: Int) {
         // Finalize box selection drawing
-        if boxSelectionStart != nil && viewModel.toolMode == .select && viewModel.selectMode == .boxSelect {
+        if boxSelectionStart != nil && viewModel.toolMode == .browse && viewModel.selectMode == .boxSelect {
             boxSelectionStart = nil
             if let rect = boxDrawingRect, let drawPage = boxDrawingPageIndex,
                rect.width >= 10, rect.height >= 10 {
