@@ -11,6 +11,7 @@ struct SidecarModel: Codable, Equatable, Sendable {
     var comments: [CommentAnnotationModel] = []
     var markups: [MarkupAnnotationModel] = []
     var shapes: [ShapeAnnotationModel] = []
+    var drawOrder: [UUID] = []  // z-order for stamps, textBoxes, shapes (front = last)
     var ocrResults: [String: OCRPageResult] = [:]
     var formFieldOverrides: [String: String] = [:]
 

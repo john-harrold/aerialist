@@ -139,6 +139,50 @@ final class DocumentViewModel {
     var selectedStampLibraryID: UUID?
     var showCombineSheet = false
 
+    // MARK: - Z-Order
+
+    private func ensureInDrawOrder(_ id: UUID) {
+        if !sidecar.drawOrder.contains(id) {
+            sidecar.drawOrder.append(id)
+        }
+    }
+
+    func bringToFront(_ id: UUID) {
+        let oldSidecar = sidecar
+        sidecar.drawOrder.removeAll { $0 == id }
+        sidecar.drawOrder.append(id)
+        registerUndo { vm in vm.sidecar = oldSidecar }
+    }
+
+    func sendToBack(_ id: UUID) {
+        let oldSidecar = sidecar
+        sidecar.drawOrder.removeAll { $0 == id }
+        sidecar.drawOrder.insert(id, at: 0)
+        registerUndo { vm in vm.sidecar = oldSidecar }
+    }
+
+    func bringForward(_ id: UUID) {
+        let oldSidecar = sidecar
+        ensureInDrawOrder(id)
+        guard let idx = sidecar.drawOrder.firstIndex(of: id),
+              idx < sidecar.drawOrder.count - 1 else { return }
+        sidecar.drawOrder.swapAt(idx, idx + 1)
+        registerUndo { vm in vm.sidecar = oldSidecar }
+    }
+
+    func sendBackward(_ id: UUID) {
+        let oldSidecar = sidecar
+        ensureInDrawOrder(id)
+        guard let idx = sidecar.drawOrder.firstIndex(of: id),
+              idx > 0 else { return }
+        sidecar.drawOrder.swapAt(idx, idx - 1)
+        registerUndo { vm in vm.sidecar = oldSidecar }
+    }
+
+    func drawOrderIndex(for id: UUID) -> Int {
+        sidecar.drawOrder.firstIndex(of: id) ?? -1
+    }
+
     // MARK: - Search State
     var searchText: String = ""
     var searchResults: [PDFSelection] = []

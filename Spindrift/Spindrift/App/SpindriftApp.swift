@@ -45,6 +45,11 @@ struct SpindriftApp: App {
         .commands {
             HelpCommands()
             CommandGroup(after: .saveItem) {
+                Button("Save As...") {
+                    NotificationCenter.default.post(name: .saveAs, object: nil)
+                }
+                .keyboardShortcut("s", modifiers: [.command, .shift])
+
                 Divider()
                 Button("Export as PDF...") {
                     NotificationCenter.default.post(
@@ -200,7 +205,7 @@ struct SpindriftApp: App {
         panel.treatsFilePackagesAsDirectories = false
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
-            if url.pathExtension.lowercased() == "spindriftcollection" {
+            if url.pathExtension.lowercased() == "pdfc" {
                 NotificationCenter.default.post(name: .openCollection, object: url)
             } else {
                 NSDocumentController.shared.openDocument(
@@ -221,4 +226,5 @@ extension Notification.Name {
     static let combineFiles = Notification.Name("combineFiles")
     static let tableSelect = Notification.Name("tableSelect")
     static let openCollection = Notification.Name("openCollection")
+    static let saveAs = Notification.Name("saveAs")
 }

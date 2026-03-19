@@ -81,6 +81,8 @@
 		B1000000000000000000004E /* ExcelExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000033 /* ExcelExportService.swift */; };
 		B1000000000000000000004F /* TableExtractionServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1000000000000000000004F /* TableExtractionServiceTests.swift */; };
 		B10000000000000000000050 /* python in Resources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000050 /* python */; };
+		B10000000000000000000080 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000080 /* Assets.xcassets */; };
+		B10000000000000000000081 /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000081 /* AppIcon.icns */; };
 		B10000000000000000000051 /* XLKit in Frameworks */ = {isa = PBXBuildFile; productRef = P20000000000000000000004 /* XLKit */; };
 		B10000000000000000000052 /* test_table.pdf in Resources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000052 /* test_table.pdf */; };
 		B10000000000000000000053 /* VisionTableDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000053 /* VisionTableDetector.swift */; };
@@ -96,6 +98,7 @@
 		B10000000000000000000072 /* CollectionModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000072 /* CollectionModel.swift */; };
 		B10000000000000000000073 /* LauncherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000073 /* LauncherView.swift */; };
 		B10000000000000000000074 /* CollectionEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000074 /* CollectionEditorView.swift */; };
+		B10000000000000000000075 /* ZOrderSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000075 /* ZOrderSection.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -192,6 +195,8 @@
 		F1000000000000000000004C /* TableCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableCommand.swift; sourceTree = "<group>"; };
 		F1000000000000000000004F /* TableExtractionServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableExtractionServiceTests.swift; sourceTree = "<group>"; };
 		F10000000000000000000050 /* python */ = {isa = PBXFileReference; lastKnownFileType = folder; path = python; sourceTree = "<group>"; };
+		F10000000000000000000080 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		F10000000000000000000081 /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
 		F10000000000000000000052 /* test_table.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = test_table.pdf; sourceTree = "<group>"; };
 		F10000000000000000000053 /* VisionTableDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisionTableDetector.swift; sourceTree = "<group>"; };
 		F10000000000000000000060 /* TableGridOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableGridOverlayView.swift; sourceTree = "<group>"; };
@@ -205,6 +210,7 @@
 		F10000000000000000000072 /* CollectionModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollectionModel.swift; sourceTree = "<group>"; };
 		F10000000000000000000073 /* LauncherView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LauncherView.swift; sourceTree = "<group>"; };
 		F10000000000000000000074 /* CollectionEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollectionEditorView.swift; sourceTree = "<group>"; };
+		F10000000000000000000075 /* ZOrderSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZOrderSection.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -266,6 +272,8 @@
 				F10000000000000000000001 /* SpindriftApp.swift */,
 				F10000000000000000000070 /* SpindriftAppDelegate.swift */,
 				F10000000000000000000024 /* Info.plist */,
+				F10000000000000000000080 /* Assets.xcassets */,
+				F10000000000000000000081 /* AppIcon.icns */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -368,6 +376,7 @@
 				F10000000000000000000028 /* TextBoxesPanel.swift */,
 				F1000000000000000000002B /* ShapeInspector.swift */,
 				F1000000000000000000001B /* FormFieldInspector.swift */,
+				F10000000000000000000075 /* ZOrderSection.swift */,
 			);
 			path = Inspectors;
 			sourceTree = "<group>";
@@ -583,6 +592,8 @@
 				B1000000000000000000003E /* pdf2docx_convert.py in Resources */,
 				B1000000000000000000004A /* table_extract.py in Resources */,
 				B10000000000000000000050 /* python in Resources */,
+				B10000000000000000000080 /* Assets.xcassets in Resources */,
+				B10000000000000000000081 /* AppIcon.icns in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -646,6 +657,7 @@
 				B10000000000000000000028 /* TextBoxesPanel.swift in Sources */,
 				B1000000000000000000002A /* ShapeAnnotation.swift in Sources */,
 				B1000000000000000000002B /* ShapeInspector.swift in Sources */,
+				B10000000000000000000075 /* ZOrderSection.swift in Sources */,
 				B1000000000000000000002C /* StampLibrary.swift in Sources */,
 				B1000000000000000000002D /* StampLibraryPopover.swift in Sources */,
 				B10000000000000000000031 /* WordExportService.swift in Sources */,

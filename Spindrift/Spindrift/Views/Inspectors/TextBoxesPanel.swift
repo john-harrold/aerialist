@@ -116,6 +116,8 @@ struct TextBoxesPanel: View {
                     .disabled(!hasOutline)
                     .opacity(hasOutline ? 1 : 0.3)
             }
+
+            ZOrderSection(viewModel: viewModel, annotationID: id)
         }
         .formStyle(.grouped)
         .frame(maxHeight: 420)

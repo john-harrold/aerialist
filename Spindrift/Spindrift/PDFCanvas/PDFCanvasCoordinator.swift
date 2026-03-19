@@ -743,6 +743,7 @@ class PDFCanvasCoordinator: NSObject, PDFViewDelegate {
             deleteItem.target = self
             deleteItem.representedObject = id
             menu.addItem(deleteItem)
+            addZOrderItems(to: menu, for: id)
             return menu
 
         case .textBox(let id, _):
@@ -753,6 +754,7 @@ class PDFCanvasCoordinator: NSObject, PDFViewDelegate {
             deleteItem.target = self
             deleteItem.representedObject = id
             menu.addItem(deleteItem)
+            addZOrderItems(to: menu, for: id)
             return menu
 
         case .shape(let id, _):
@@ -763,11 +765,53 @@ class PDFCanvasCoordinator: NSObject, PDFViewDelegate {
             deleteItem.target = self
             deleteItem.representedObject = id
             menu.addItem(deleteItem)
+            addZOrderItems(to: menu, for: id)
             return menu
 
         case .none:
             return nil
         }
+    }
+
+    private func addZOrderItems(to menu: NSMenu, for id: UUID) {
+        menu.addItem(NSMenuItem.separator())
+        let bringFront = NSMenuItem(title: "Bring to Front", action: #selector(bringToFrontAction(_:)), keyEquivalent: "")
+        bringFront.target = self
+        bringFront.representedObject = id
+        menu.addItem(bringFront)
+        let bringForward = NSMenuItem(title: "Bring Forward", action: #selector(bringForwardAction(_:)), keyEquivalent: "")
+        bringForward.target = self
+        bringForward.representedObject = id
+        menu.addItem(bringForward)
+        let sendBackward = NSMenuItem(title: "Send Backward", action: #selector(sendBackwardAction(_:)), keyEquivalent: "")
+        sendBackward.target = self
+        sendBackward.representedObject = id
+        menu.addItem(sendBackward)
+        let sendBack = NSMenuItem(title: "Send to Back", action: #selector(sendToBackAction(_:)), keyEquivalent: "")
+        sendBack.target = self
+        sendBack.representedObject = id
+        menu.addItem(sendBack)
+    }
+
+    @objc private func bringToFrontAction(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? UUID else { return }
+        viewModel.bringToFront(id)
+        syncAnnotations()
+    }
+    @objc private func bringForwardAction(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? UUID else { return }
+        viewModel.bringForward(id)
+        syncAnnotations()
+    }
+    @objc private func sendBackwardAction(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? UUID else { return }
+        viewModel.sendBackward(id)
+        syncAnnotations()
+    }
+    @objc private func sendToBackAction(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? UUID else { return }
+        viewModel.sendToBack(id)
+        syncAnnotations()
     }
 
     @objc private func deleteAnnotation(_ sender: NSMenuItem) {
@@ -1289,7 +1333,48 @@ class PDFCanvasCoordinator: NSObject, PDFViewDelegate {
         syncMarkups(doc: doc)
         syncShapes(doc: doc)
 
+        // Reorder managed annotations on each page by drawOrder
+        reorderAnnotationsByDrawOrder(doc: doc)
+
         pdfView.setNeedsDisplay(pdfView.bounds)
+    }
+
+    /// Reorder Spindrift-managed annotations on each page to match the drawOrder array.
+    private func reorderAnnotationsByDrawOrder(doc: PDFDocument) {
+        let drawOrder = viewModel.sidecar.drawOrder
+        guard !drawOrder.isEmpty else { return }
+
+        for pageIndex in 0..<doc.pageCount {
+            guard let page = doc.page(at: pageIndex) else { continue }
+
+            // Collect managed annotations (those with a spindrift tag in userName)
+            var managed: [(annotation: PDFAnnotation, id: UUID)] = []
+            var unmanaged: [PDFAnnotation] = []
+
+            for annotation in page.annotations {
+                if let userName = annotation.userName,
+                   let (_, id) = SpindriftDocument.parseAnnotationTag(userName) {
+                    managed.append((annotation, id))
+                } else {
+                    unmanaged.append(annotation)
+                }
+            }
+
+            // Sort managed by drawOrder position (not in list = first / bottom)
+            managed.sort { a, b in
+                let ai = drawOrder.firstIndex(of: a.id) ?? -1
+                let bi = drawOrder.firstIndex(of: b.id) ?? -1
+                return ai < bi
+            }
+
+            // Remove and re-add in order
+            for (annot, _) in managed {
+                page.removeAnnotation(annot)
+            }
+            for (annot, _) in managed {
+                page.addAnnotation(annot)
+            }
+        }
     }
 
     private func syncStamps(doc: PDFDocument) {

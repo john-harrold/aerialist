@@ -47,7 +47,7 @@ struct LauncherView: View {
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             let ext = url.pathExtension.lowercased()
-            if ext == "spindriftcollection" {
+            if ext == "pdfc" {
                 NotificationCenter.default.post(name: .openCollection, object: url)
             } else {
                 Task {
@@ -61,7 +61,7 @@ struct LauncherView: View {
     private func createCollection() {
         let savePanel = NSSavePanel()
         savePanel.allowedContentTypes = [.spindriftCollection]
-        savePanel.nameFieldStringValue = "Untitled.spindriftcollection"
+        savePanel.nameFieldStringValue = "Untitled.pdfc"
         savePanel.begin { response in
             guard response == .OK, let url = savePanel.url else { return }
 

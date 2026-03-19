@@ -78,6 +78,13 @@ struct ContentView: View {
                 }
                 .keyboardShortcut("f", modifiers: .command)
                 .hidden()
+
+                // Intercept Cmd+S for temp files (from clipboard) → Save As
+                if isTemporaryFile {
+                    Button("") { saveAs() }
+                        .keyboardShortcut("s", modifiers: .command)
+                        .hidden()
+                }
             }
             .onReceive(NotificationCenter.default.publisher(for: .exportAsPDF)) { _ in exportAsPDF() }
             .onReceive(NotificationCenter.default.publisher(for: .ocrCurrentPage)) { _ in viewModel.startOCRCurrentPage() }
@@ -85,11 +92,21 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: .combineFiles)) { _ in viewModel.showCombineSheet = true }
             .onReceive(NotificationCenter.default.publisher(for: .exportAsWord)) { _ in exportAsWord() }
             .onReceive(NotificationCenter.default.publisher(for: .exportAsText)) { _ in exportAsText() }
+            .onReceive(NotificationCenter.default.publisher(for: .saveAs)) { _ in saveAs() }
             .onReceive(NotificationCenter.default.publisher(for: .tableSelect)) { _ in
                 viewModel.showTableToolbar = true
                 viewModel.showOCRToolbar = false
                 viewModel.toolMode = .tableSelect
             }
+    }
+
+    // MARK: - Temp File Detection
+
+    private var isTemporaryFile: Bool {
+        guard let url = document.pdfDocument.documentURL else { return true }
+        return url.path.hasPrefix(FileManager.default.temporaryDirectory.path)
+            || url.path.hasPrefix("/tmp/")
+            || url.path.hasPrefix("/private/tmp/")
     }
 
     // MARK: - Navigation Title
@@ -817,6 +834,30 @@ struct ContentView: View {
     }
 
     // MARK: - Export
+
+    private func saveAs() {
+        guard let pdfData = document.pdfDocument.dataRepresentation() else { return }
+
+        let savePanel = NSSavePanel()
+        savePanel.allowedContentTypes = [.pdf]
+        let currentName = document.pdfDocument.documentURL?
+            .deletingPathExtension().lastPathComponent ?? "Untitled"
+        savePanel.nameFieldStringValue = currentName + ".pdf"
+
+        savePanel.begin { response in
+            guard response == .OK, let url = savePanel.url else { return }
+            do {
+                try pdfData.write(to: url)
+                NSDocumentController.shared.openDocument(
+                    withContentsOf: url,
+                    display: true
+                ) { _, _, _ in }
+            } catch {
+                let alert = NSAlert(error: error)
+                alert.runModal()
+            }
+        }
+    }
 
     private func exportAsPDF() {
         let savePanel = NSSavePanel()

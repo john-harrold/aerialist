@@ -34,6 +34,8 @@ struct StampInspector: View {
                     }
                 }
 
+                ZOrderSection(viewModel: viewModel, annotationID: stampID)
+
                 Section {
                     Button("Delete Stamp", role: .destructive) {
                         let oldSidecar = viewModel.sidecar

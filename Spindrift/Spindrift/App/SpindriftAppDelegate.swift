@@ -46,7 +46,7 @@ class SpindriftAppDelegate: NSObject, NSApplicationDelegate {
 
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
-            if url.pathExtension.lowercased() == "spindriftcollection" {
+            if url.pathExtension.lowercased() == "pdfc" {
                 openCollectionWindow(url: url)
             } else {
                 NSDocumentController.shared.openDocument(

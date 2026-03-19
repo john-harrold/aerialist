@@ -67,6 +67,8 @@ struct ShapeInspector: View {
                     }
                 }
 
+                ZOrderSection(viewModel: viewModel, annotationID: shapeID)
+
                 Section {
                     Button("Delete Shape", role: .destructive) {
                         let oldSidecar = viewModel.sidecar
