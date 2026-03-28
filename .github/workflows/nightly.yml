@@ -244,32 +244,26 @@ jobs:
           path: ${{ env.DMG_PATH }}
           retention-days: 30
 
-      - name: Remove old release assets
+      - name: Recreate nightly release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Delete all existing assets from the nightly release
-          gh release view nightly --json assets --jq '.assets[].name' 2>/dev/null | while read -r asset; do
-            echo "Removing old asset: $asset"
-            gh release delete-asset nightly "$asset" -y
-          done
+          # Delete existing nightly release and tag to remove auto-generated source archives
+          gh release delete nightly --cleanup-tag -y 2>/dev/null || true
 
-      - name: Update nightly release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: nightly
-          name: Nightly Build
-          body: |
-            Automated nightly build from `main` branch.
+          # Recreate tag at current HEAD
+          git tag -f nightly HEAD
+          git push origin nightly --force
 
-            **Commit:** ${{ github.sha }}
+          # Create fresh release with our assets
+          gh release create nightly \
+            --title "Nightly Build" \
+            --notes "Automated nightly build from \`main\` branch.
 
-            This build is signed and notarized by Apple.
-          prerelease: true
-          files: |
-            ${{ env.DMG_PATH }}
-            ${{ env.SRC_TAR }}
-            ${{ env.SRC_ZIP }}
-          make_latest: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          **Commit:** ${{ github.sha }}
+
+          This build is signed and notarized by Apple." \
+            --prerelease \
+            "$DMG_PATH" \
+            "$SRC_TAR" \
+            "$SRC_ZIP"
