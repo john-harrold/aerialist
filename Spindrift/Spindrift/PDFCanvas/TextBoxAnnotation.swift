@@ -12,6 +12,7 @@ class TextBoxAnnotation: PDFAnnotation {
     var outlineStyle_: OutlineStyle
     var isSelected_: Bool = false
     var isEditingInline_: Bool = false
+    var rotation_: CGFloat = 0 // degrees
 
     /// The actual text box rect. The annotation's PDFKit `bounds` may be slightly
     /// larger to prevent selection handles from being clipped.
@@ -19,16 +20,18 @@ class TextBoxAnnotation: PDFAnnotation {
 
     init(textBoxID: UUID, bounds: CGRect, text: String, fontName: String, fontSize: CGFloat,
          textColor: NSColor, backgroundColor: NSColor?, outlineColor: NSColor?,
-         outlineStyle: OutlineStyle) {
+         outlineStyle: OutlineStyle, rotation: CGFloat = 0) {
         self.textBoxID = textBoxID
         self.textColor_ = textColor
         self.textFont_ = NSFont(name: fontName, size: fontSize) ?? .systemFont(ofSize: fontSize)
         self.backgroundColor_ = backgroundColor
         self.outlineColor_ = outlineColor
         self.outlineStyle_ = outlineStyle
+        self.rotation_ = rotation
         self.logicalBounds_ = bounds
-        // Expand PDFKit bounds so 4pt-radius selection handles aren't clipped
-        let expanded = bounds.insetBy(dx: -6, dy: -6)
+        // Expand PDFKit bounds so selection handles and rotation handle aren't clipped
+        // Always use 30pt to accommodate the rotation handle (20pt offset + handle radius)
+        let expanded = bounds.insetBy(dx: -30, dy: -30)
         super.init(bounds: expanded, forType: .stamp, withProperties: nil)
         self.contents = text
         self.shouldDisplay = true
@@ -41,19 +44,29 @@ class TextBoxAnnotation: PDFAnnotation {
     }
 
     func update(text: String, fontName: String, fontSize: CGFloat, textColor: NSColor,
-                backgroundColor: NSColor?, outlineColor: NSColor?, outlineStyle: OutlineStyle) {
+                backgroundColor: NSColor?, outlineColor: NSColor?, outlineStyle: OutlineStyle,
+                rotation: CGFloat = 0) {
         self.contents = text
         self.textFont_ = NSFont(name: fontName, size: fontSize) ?? .systemFont(ofSize: fontSize)
         self.textColor_ = textColor
         self.backgroundColor_ = backgroundColor
         self.outlineColor_ = outlineColor
         self.outlineStyle_ = outlineStyle
+        self.rotation_ = rotation
     }
 
     override func draw(with box: PDFDisplayBox, in context: CGContext) {
         let rect = logicalBounds_
 
         context.saveGState()
+
+        // Apply rotation around center
+        if rotation_ != 0 {
+            let cx = rect.midX, cy = rect.midY
+            context.translateBy(x: cx, y: cy)
+            context.rotate(by: rotation_ * .pi / 180)
+            context.translateBy(x: -cx, y: -cy)
+        }
 
         // Background
         if let bg = backgroundColor_ {
@@ -107,40 +120,59 @@ class TextBoxAnnotation: PDFAnnotation {
                 context.fillEllipse(in: handleRect)
                 context.strokeEllipse(in: handleRect)
             }
+
+            // Rotation handle — green circle 20pt above top-center, connected by dashed line
+            let rotateY = rect.maxY + 20
+            let rotateCenter = CGPoint(x: rect.midX, y: rotateY)
+            context.setLineDash(phase: 0, lengths: [3, 3])
+            context.setStrokeColor(NSColor.systemBlue.cgColor)
+            context.setLineWidth(1.0)
+            context.move(to: CGPoint(x: rect.midX, y: rect.maxY))
+            context.addLine(to: rotateCenter)
+            context.strokePath()
+
+            let rotateHandleRect = CGRect(
+                x: rotateCenter.x - handleRadius,
+                y: rotateCenter.y - handleRadius,
+                width: handleRadius * 2,
+                height: handleRadius * 2
+            )
+            context.setLineDash(phase: 0, lengths: [])
+            context.setFillColor(NSColor.systemGreen.cgColor)
+            context.setStrokeColor(NSColor.systemBlue.cgColor)
+            context.fillEllipse(in: rotateHandleRect)
+            context.strokeEllipse(in: rotateHandleRect)
+        }
+
+        // Draw text inside the rotated context (before restoreGState)
+        if !isEditingInline_ {
+            let text = (contents ?? "") as NSString
+            if !text.isEqual(to: "") || isSelected_ {
+                let paragraphStyle = NSMutableParagraphStyle()
+                paragraphStyle.lineBreakMode = .byWordWrapping
+
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: textFont_,
+                    .foregroundColor: textColor_,
+                    .paragraphStyle: paragraphStyle
+                ]
+                let textRect = rect.insetBy(dx: 4, dy: 2)
+
+                NSGraphicsContext.saveGraphicsState()
+                let nsContext = NSGraphicsContext(cgContext: context, flipped: true)
+                NSGraphicsContext.current = nsContext
+
+                context.saveGState()
+                context.translateBy(x: textRect.origin.x, y: textRect.origin.y + textRect.height)
+                context.scaleBy(x: 1, y: -1)
+                let drawRect = CGRect(origin: .zero, size: textRect.size)
+                text.draw(in: drawRect, withAttributes: attrs)
+                context.restoreGState()
+
+                NSGraphicsContext.restoreGraphicsState()
+            }
         }
 
         context.restoreGState()
-
-        // When editing inline, the NSTextView overlay shows the text — skip drawing it here
-        guard !isEditingInline_ else { return }
-
-        // Draw text using NSString for proper multi-line wrapping
-        let text = (contents ?? "") as NSString
-        guard !text.isEqual(to: "") || isSelected_ else { return }
-
-        let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.lineBreakMode = .byWordWrapping
-
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: textFont_,
-            .foregroundColor: textColor_,
-            .paragraphStyle: paragraphStyle
-        ]
-        let textRect = rect.insetBy(dx: 4, dy: 2)
-
-        NSGraphicsContext.saveGraphicsState()
-        let nsContext = NSGraphicsContext(cgContext: context, flipped: true)
-        NSGraphicsContext.current = nsContext
-
-        // CGContext for PDF has origin at bottom-left with Y going up.
-        // NSString.draw expects a flipped coordinate system. We need to flip.
-        context.saveGState()
-        context.translateBy(x: textRect.origin.x, y: textRect.origin.y + textRect.height)
-        context.scaleBy(x: 1, y: -1)
-        let drawRect = CGRect(origin: .zero, size: textRect.size)
-        text.draw(in: drawRect, withAttributes: attrs)
-        context.restoreGState()
-
-        NSGraphicsContext.restoreGraphicsState()
     }
 }

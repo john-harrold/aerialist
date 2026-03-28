@@ -27,6 +27,7 @@ class PDFCanvasCoordinator: NSObject, PDFViewDelegate {
     /// Whether the initial zoom-to-width has been applied.
     var hasSetInitialZoom = false
     var lastSearchHighlightRevision = 0
+    var lastZoomRevision = 0
 
     /// Shape creation state
     private var shapeCreationStart: CGPoint?
@@ -64,6 +65,7 @@ class PDFCanvasCoordinator: NSObject, PDFViewDelegate {
         case stampRotate(id: UUID)
         case textBox(id: UUID, startBounds: AnnotationBounds, offset: CGPoint)
         case textBoxResize(id: UUID, startBounds: AnnotationBounds, corner: InteractionHandler.StampAction)
+        case textBoxRotate(id: UUID)
         case shape(id: UUID, startBounds: AnnotationBounds, offset: CGPoint)
         case shapeResize(id: UUID, startBounds: AnnotationBounds, corner: InteractionHandler.StampAction)
         case shapeRotate(id: UUID)
@@ -98,6 +100,15 @@ class PDFCanvasCoordinator: NSObject, PDFViewDelegate {
               let document = pdfView.document else { return }
         let pageIndex = document.index(for: currentPage)
         viewModel.currentPageIndex = pageIndex
+    }
+
+    @objc func scaleChanged(_ notification: Notification) {
+        guard let pdfView = pdfView else { return }
+        // Update viewModel to match PDFView's actual scale (from pinch-zoom)
+        let rounded = (pdfView.scaleFactor * 100).rounded() / 100
+        if abs(viewModel.zoomLevel - rounded) > 0.001 {
+            viewModel.zoomLevel = rounded
+        }
     }
 
     // MARK: - Double-Click / Inline Editing
@@ -320,7 +331,9 @@ class PDFCanvasCoordinator: NSObject, PDFViewDelegate {
                 if let idx = viewModel.sidecar.textBoxes.firstIndex(where: { $0.id == id }) {
                     let b = viewModel.sidecar.textBoxes[idx].bounds
                     preDragSidecar = viewModel.sidecar
-                    if action == .drag {
+                    if action == .rotate {
+                        dragTarget = .textBoxRotate(id: id)
+                    } else if action == .drag {
                         let offset = CGPoint(x: point.x - b.x, y: point.y - b.y)
                         dragTarget = .textBox(id: id, startBounds: b, offset: offset)
                     } else {
@@ -559,7 +572,9 @@ class PDFCanvasCoordinator: NSObject, PDFViewDelegate {
                 if let idx = viewModel.sidecar.textBoxes.firstIndex(where: { $0.id == id }) {
                     let b = viewModel.sidecar.textBoxes[idx].bounds
                     preDragSidecar = viewModel.sidecar
-                    if action == .drag {
+                    if action == .rotate {
+                        dragTarget = .textBoxRotate(id: id)
+                    } else if action == .drag {
                         let offset = CGPoint(x: point.x - b.x, y: point.y - b.y)
                         dragTarget = .textBox(id: id, startBounds: b, offset: offset)
                     } else {
@@ -945,6 +960,17 @@ class PDFCanvasCoordinator: NSObject, PDFViewDelegate {
                 let degrees = -angle * 180 / .pi
                 // Snap to nearest degree
                 viewModel.sidecar.stamps[idx].rotation = degrees.truncatingRemainder(dividingBy: 360)
+                syncAnnotations()
+            }
+
+        case .textBoxRotate(let id):
+            if let idx = viewModel.sidecar.textBoxes.firstIndex(where: { $0.id == id }) {
+                let b = viewModel.sidecar.textBoxes[idx].bounds
+                let cx = b.x + b.width / 2
+                let cy = b.y + b.height / 2
+                let angle = atan2(point.x - cx, point.y - cy)
+                let degrees = -angle * 180 / .pi
+                viewModel.sidecar.textBoxes[idx].rotation = degrees.truncatingRemainder(dividingBy: 360)
                 syncAnnotations()
             }
 
@@ -1440,7 +1466,6 @@ class PDFCanvasCoordinator: NSObject, PDFViewDelegate {
 
             if let existing = liveTextBoxAnnotations[textBox.id] {
                 // Skip updating text content on the annotation being edited inline
-                // (the NSTextView overlay is showing the text instead)
                 if textBox.id != inlineEditingTextBoxID {
                     existing.update(
                         text: textBox.text,
@@ -1449,15 +1474,18 @@ class PDFCanvasCoordinator: NSObject, PDFViewDelegate {
                         textColor: NSColor(hex: textBox.color) ?? .black,
                         backgroundColor: bgColor,
                         outlineColor: olColor,
-                        outlineStyle: textBox.outlineStyle
+                        outlineStyle: textBox.outlineStyle,
+                        rotation: textBox.rotation
                     )
                 }
                 existing.isSelected_ = (textBox.id == selectedID)
                 let logicalRect = textBox.bounds.cgRect
-                if existing.logicalBounds_ != logicalRect {
+                let padding: CGFloat = 30
+                if existing.logicalBounds_ != logicalRect || existing.rotation_ != textBox.rotation {
                     existing.page?.removeAnnotation(existing)
                     existing.logicalBounds_ = logicalRect
-                    existing.bounds = logicalRect.insetBy(dx: -6, dy: -6)
+                    existing.rotation_ = textBox.rotation
+                    existing.bounds = logicalRect.insetBy(dx: -padding, dy: -padding)
                     if let page = doc.page(at: textBox.pageIndex) {
                         page.addAnnotation(existing)
                     }
@@ -1473,7 +1501,8 @@ class PDFCanvasCoordinator: NSObject, PDFViewDelegate {
                     textColor: NSColor(hex: textBox.color) ?? .black,
                     backgroundColor: bgColor,
                     outlineColor: olColor,
-                    outlineStyle: textBox.outlineStyle
+                    outlineStyle: textBox.outlineStyle,
+                    rotation: textBox.rotation
                 )
                 annotation.isSelected_ = (textBox.id == selectedID)
                 annotation.userName = SpindriftDocument.annotationTag(type: "textbox", id: textBox.id)

@@ -115,6 +115,13 @@ struct TextBoxesPanel: View {
                 ColorPicker("Outline Color", selection: outlineColorBinding(for: id))
                     .disabled(!hasOutline)
                     .opacity(hasOutline ? 1 : 0.3)
+
+                Slider(value: rotationBinding(for: id), in: 0...360, step: 1) {
+                    Text("Rotation")
+                }
+                LabeledContent("Rotation") {
+                    Text("\(Int(viewModel.sidecar.textBoxes.first { $0.id == id }?.rotation ?? 0))°")
+                }
             }
 
             ZOrderSection(viewModel: viewModel, annotationID: id)
@@ -283,6 +290,17 @@ struct TextBoxesPanel: View {
                 if let idx = updated.textBoxes.firstIndex(where: { $0.id == id }) {
                     updated.textBoxes[idx].outlineColor = newValue.hexString
                     viewModel.sidecar = updated
+                }
+            }
+        )
+    }
+
+    private func rotationBinding(for id: UUID) -> Binding<CGFloat> {
+        Binding(
+            get: { viewModel.sidecar.textBoxes.first { $0.id == id }?.rotation ?? 0 },
+            set: { newValue in
+                if let idx = viewModel.sidecar.textBoxes.firstIndex(where: { $0.id == id }) {
+                    viewModel.sidecar.textBoxes[idx].rotation = newValue
                 }
             }
         )

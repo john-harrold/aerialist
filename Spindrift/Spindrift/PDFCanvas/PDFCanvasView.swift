@@ -66,6 +66,14 @@ struct PDFCanvasView: NSViewRepresentable {
             object: pdfView
         )
 
+        // Observe scale changes from pinch-zoom
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(PDFCanvasCoordinator.scaleChanged(_:)),
+            name: .PDFViewScaleChanged,
+            object: pdfView
+        )
+
         return pdfView
     }
 
@@ -76,11 +84,12 @@ struct PDFCanvasView: NSViewRepresentable {
         }
         context.coordinator.viewModel = viewModel
 
-        // Set initial zoom to 100% (1 PDF point = 1 screen point)
+        // Set initial zoom on first layout
         if !context.coordinator.hasSetInitialZoom,
            pdfView.bounds.width > 0 {
-            pdfView.scaleFactor = 1.0
+            pdfView.scaleFactor = viewModel.zoomLevel
             context.coordinator.hasSetInitialZoom = true
+            context.coordinator.lastZoomRevision = viewModel.zoomSetByUI
         }
 
         // Navigate to the requested page if it differs from what's visible
@@ -101,8 +110,10 @@ struct PDFCanvasView: NSViewRepresentable {
         _ = viewModel.selectedAnnotationID
         _ = viewModel.toolMode
 
-        // Sync zoom level
-        if abs(pdfView.scaleFactor - viewModel.zoomLevel) > 0.001 {
+        // Sync zoom level — only push to PDFView when explicitly set by UI buttons
+        let zoomRev = viewModel.zoomSetByUI
+        if zoomRev != context.coordinator.lastZoomRevision {
+            context.coordinator.lastZoomRevision = zoomRev
             pdfView.scaleFactor = viewModel.zoomLevel
         }
 

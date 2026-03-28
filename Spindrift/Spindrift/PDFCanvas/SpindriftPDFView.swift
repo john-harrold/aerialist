@@ -63,6 +63,14 @@ class SpindriftPDFView: PDFView {
     /// is the actual first responder, so our keyDown override never fires).
     private nonisolated(unsafe) var keyMonitor: Any?
 
+    // Handle Edit > Copy menu action
+    @objc override func copy(_ sender: Any?) {
+        if let onCopyKey = onCopyKey, onCopyKey() {
+            return  // consumed by box selection copy
+        }
+        super.copy(sender)  // default PDFView text copy
+    }
+
     override func mouseDown(with event: NSEvent) {
         isDragging = false
 

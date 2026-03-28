@@ -6,7 +6,6 @@ extension View {
     func activeButtonStyle(_ isActive: Bool) -> some View {
         if isActive {
             self.buttonStyle(.borderedProminent)
-                .tint(.accentColor)
         } else {
             self.buttonStyle(.bordered)
         }
@@ -79,11 +78,13 @@ struct ContentView: View {
                 .keyboardShortcut("f", modifiers: .command)
                 .hidden()
 
-                // Intercept Cmd+S for temp files (from clipboard) → Save As
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .saveOrSaveAs)) { _ in
                 if isTemporaryFile {
-                    Button("") { saveAs() }
-                        .keyboardShortcut("s", modifiers: .command)
-                        .hidden()
+                    saveAs()
+                } else {
+                    // Trigger the standard document save
+                    NSApp.sendAction(#selector(NSDocument.save(_:)), to: nil, from: nil)
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .exportAsPDF)) { _ in exportAsPDF() }
@@ -93,6 +94,7 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: .exportAsWord)) { _ in exportAsWord() }
             .onReceive(NotificationCenter.default.publisher(for: .exportAsText)) { _ in exportAsText() }
             .onReceive(NotificationCenter.default.publisher(for: .saveAs)) { _ in saveAs() }
+            .onReceive(NotificationCenter.default.publisher(for: .printDocument)) { _ in printDocument() }
             .onReceive(NotificationCenter.default.publisher(for: .tableSelect)) { _ in
                 viewModel.showTableToolbar = true
                 viewModel.showOCRToolbar = false
@@ -189,6 +191,25 @@ struct ContentView: View {
         }
     }
 
+    private var activeToolLabel: some View {
+        Label(activeToolName, systemImage: activeToolIcon)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.trailing, 8)
+    }
+
+    private var activeToolName: String {
+        if viewModel.showOCRToolbar { return "OCR" }
+        if viewModel.showTableToolbar { return "Table" }
+        return viewModel.toolMode.rawValue
+    }
+
+    private var activeToolIcon: String {
+        if viewModel.showOCRToolbar { return "text.viewfinder" }
+        if viewModel.showTableToolbar { return "tablecells" }
+        return viewModel.toolMode.systemImage
+    }
+
     private var mainContent: some View {
         VStack(spacing: 0) {
             if viewModel.showOCRToolbar {
@@ -203,6 +224,15 @@ struct ContentView: View {
                 markupToolbar
             } else if viewModel.toolMode.isDraw {
                 drawToolbar
+            } else {
+                // Tools without sub-toolbars (e.g. Comment) — show active tool indicator
+                HStack {
+                    activeToolLabel
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(.bar)
             }
             PDFCanvasView(
                 pdfDocument: document.pdfDocument,
@@ -218,6 +248,8 @@ struct ContentView: View {
 
     private var browseToolbar: some View {
         HStack(spacing: 12) {
+            activeToolLabel
+
             // Select mode (text / box)
             HStack(spacing: 2) {
                 ForEach(SelectMode.allCases) { mode in
@@ -273,6 +305,7 @@ struct ContentView: View {
             // Zoom controls
             Button {
                 viewModel.zoomLevel = max(0.25, viewModel.zoomLevel - 0.25)
+                viewModel.zoomSetByUI += 1
             } label: {
                 Image(systemName: "minus.magnifyingglass")
             }
@@ -293,6 +326,7 @@ struct ContentView: View {
 
             Button {
                 viewModel.zoomLevel = min(5.0, viewModel.zoomLevel + 0.25)
+                viewModel.zoomSetByUI += 1
             } label: {
                 Image(systemName: "plus.magnifyingglass")
             }
@@ -301,6 +335,7 @@ struct ContentView: View {
 
             Button {
                 viewModel.zoomLevel = 1.0
+                viewModel.zoomSetByUI += 1
             } label: {
                 Image(systemName: "arrow.up.left.and.arrow.down.right")
             }
@@ -370,17 +405,21 @@ struct ContentView: View {
         let cleaned = zoomText.replacingOccurrences(of: "%", with: "").trimmingCharacters(in: .whitespaces)
         if let value = Double(cleaned), value > 0 {
             viewModel.zoomLevel = min(5.0, max(0.1, value / 100.0))
+            viewModel.zoomSetByUI += 1
         }
     }
 
     // MARK: - Stamp Toolbar
 
     private var stampToolbar: some View {
-        StampToolbar(
-            stampLibrary: viewModel.stampLibrary,
-            selectedStampID: $viewModel.selectedStampLibraryID
-        ) { imageData in
-            viewModel.pendingStampData = imageData
+        HStack(spacing: 12) {
+            activeToolLabel
+            StampToolbar(
+                stampLibrary: viewModel.stampLibrary,
+                selectedStampID: $viewModel.selectedStampLibraryID
+            ) { imageData in
+                viewModel.pendingStampData = imageData
+            }
         }
     }
 
@@ -388,6 +427,7 @@ struct ContentView: View {
 
     private var markupToolbar: some View {
         HStack(spacing: 12) {
+            activeToolLabel
             HStack(spacing: 2) {
                 ForEach(ToolMode.markupCases, id: \.id) { mode in
                     Button {
@@ -437,6 +477,7 @@ struct ContentView: View {
 
     private var ocrToolbar: some View {
         HStack(spacing: 12) {
+            activeToolLabel
             Button {
                 viewModel.startOCRCurrentPage()
             } label: {
@@ -477,6 +518,7 @@ struct ContentView: View {
 
     private var tableToolbar: some View {
         HStack(spacing: 12) {
+            activeToolLabel
             HStack(spacing: 2) {
                 ForEach(DocumentViewModel.TableMode.allCases) { mode in
                     Button {
@@ -612,6 +654,7 @@ struct ContentView: View {
 
     private var drawToolbar: some View {
         HStack(spacing: 12) {
+            activeToolLabel
             HStack(spacing: 2) {
                 ForEach(ShapeType.allCases) { type in
                     Button {
@@ -840,9 +883,29 @@ struct ContentView: View {
 
         let savePanel = NSSavePanel()
         savePanel.allowedContentTypes = [.pdf]
-        let currentName = document.pdfDocument.documentURL?
-            .deletingPathExtension().lastPathComponent ?? "Untitled"
+
+        // Use the current document's name, or "From Clipboard" for temp files
+        let currentName: String
+        if let docURL = document.pdfDocument.documentURL {
+            currentName = docURL.deletingPathExtension().lastPathComponent
+        } else {
+            currentName = "Untitled"
+        }
         savePanel.nameFieldStringValue = currentName + ".pdf"
+
+        // Default to the last used directory, not the temp directory
+        if let docURL = document.pdfDocument.documentURL,
+           !isTemporaryFile {
+            savePanel.directoryURL = docURL.deletingLastPathComponent()
+        } else {
+            // Use NSDocumentController's last directory, or Desktop as fallback
+            let recentURLs = NSDocumentController.shared.recentDocumentURLs
+            if let lastDir = recentURLs.first?.deletingLastPathComponent() {
+                savePanel.directoryURL = lastDir
+            } else {
+                savePanel.directoryURL = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
+            }
+        }
 
         savePanel.begin { response in
             guard response == .OK, let url = savePanel.url else { return }
@@ -857,6 +920,21 @@ struct ContentView: View {
                 alert.runModal()
             }
         }
+    }
+
+    private func printDocument() {
+        // Build a flattened PDF with all annotations baked in
+        guard let data = DocumentExporter.exportFlattenedPDF(from: document),
+              let printPDF = PDFDocument(data: data) else { return }
+
+        let printInfo = NSPrintInfo.shared.copy() as! NSPrintInfo
+        printInfo.isHorizontallyCentered = true
+        printInfo.isVerticallyCentered = true
+
+        let printOp = printPDF.printOperation(for: printInfo, scalingMode: .pageScaleToFit, autoRotate: true)
+        printOp?.showsPrintPanel = true
+        printOp?.showsProgressPanel = true
+        printOp?.run()
     }
 
     private func exportAsPDF() {

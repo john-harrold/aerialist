@@ -83,6 +83,8 @@
 		B10000000000000000000050 /* python in Resources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000050 /* python */; };
 		B10000000000000000000080 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000080 /* Assets.xcassets */; };
 		B10000000000000000000081 /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000081 /* AppIcon.icns */; };
+		B10000000000000000000082 /* PDFDocIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000082 /* PDFDocIcon.icns */; };
+		B10000000000000000000083 /* CollectionDocIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000083 /* CollectionDocIcon.icns */; };
 		B10000000000000000000051 /* XLKit in Frameworks */ = {isa = PBXBuildFile; productRef = P20000000000000000000004 /* XLKit */; };
 		B10000000000000000000052 /* test_table.pdf in Resources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000052 /* test_table.pdf */; };
 		B10000000000000000000053 /* VisionTableDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10000000000000000000053 /* VisionTableDetector.swift */; };
@@ -197,6 +199,8 @@
 		F10000000000000000000050 /* python */ = {isa = PBXFileReference; lastKnownFileType = folder; path = python; sourceTree = "<group>"; };
 		F10000000000000000000080 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F10000000000000000000081 /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
+		F10000000000000000000082 /* PDFDocIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = PDFDocIcon.icns; sourceTree = "<group>"; };
+		F10000000000000000000083 /* CollectionDocIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = CollectionDocIcon.icns; sourceTree = "<group>"; };
 		F10000000000000000000052 /* test_table.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = test_table.pdf; sourceTree = "<group>"; };
 		F10000000000000000000053 /* VisionTableDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisionTableDetector.swift; sourceTree = "<group>"; };
 		F10000000000000000000060 /* TableGridOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableGridOverlayView.swift; sourceTree = "<group>"; };
@@ -274,6 +278,8 @@
 				F10000000000000000000024 /* Info.plist */,
 				F10000000000000000000080 /* Assets.xcassets */,
 				F10000000000000000000081 /* AppIcon.icns */,
+				F10000000000000000000082 /* PDFDocIcon.icns */,
+				F10000000000000000000083 /* CollectionDocIcon.icns */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -594,6 +600,8 @@
 				B10000000000000000000050 /* python in Resources */,
 				B10000000000000000000080 /* Assets.xcassets in Resources */,
 				B10000000000000000000081 /* AppIcon.icns in Resources */,
+				B10000000000000000000082 /* PDFDocIcon.icns in Resources */,
+				B10000000000000000000083 /* CollectionDocIcon.icns in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -134,6 +134,7 @@ final class DocumentViewModel {
     var showDeletePageConfirmation = false
     var pendingDeletePageIndices: Set<Int> = []
     var zoomLevel: CGFloat = 1.0
+    var zoomSetByUI: Int = 0  // increment to signal PDFCanvasView to push zoom
     var showStampPicker = false
     var pendingStampData: Data?
     var selectedStampLibraryID: UUID?

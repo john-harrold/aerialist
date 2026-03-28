@@ -45,9 +45,17 @@ enum InteractionHandler {
             }
         }
 
-        // Test text boxes (with corner + midpoint handles)
+        // Test text boxes (with corner + midpoint handles + rotation handle)
         for textBox in sidecar.textBoxes.reversed() where textBox.pageIndex == pageIndex {
             let bounds = textBox.bounds.cgRect
+
+            // Check rotation handle first (above top-center, may be outside bounds)
+            let rotHandleCenter = rotationHandlePositionForTextBox(bounds: bounds, rotation: textBox.rotation)
+            let distToRot = hypot(point.x - rotHandleCenter.x, point.y - rotHandleCenter.y)
+            if distToRot < resizeMargin {
+                return .textBox(id: textBox.id, action: .rotate)
+            }
+
             let hitBounds = bounds.insetBy(dx: -resizeMargin, dy: -resizeMargin)
             guard hitBounds.contains(point) else { continue }
             let action = resizeActionForShape(point: point, bounds: bounds)
@@ -114,6 +122,18 @@ enum InteractionHandler {
 
         let rad = stamp.rotation * .pi / 180
         let dy = topCenterY - cy
+        let rotatedX = -dy * sin(rad) + cx
+        let rotatedY = dy * cos(rad) + cy
+        return CGPoint(x: rotatedX, y: rotatedY)
+    }
+
+    /// Compute the rotation handle position for a text box in page coordinates.
+    private static func rotationHandlePositionForTextBox(bounds: CGRect, rotation: CGFloat) -> CGPoint {
+        let cx = bounds.midX
+        let cy = bounds.midY
+        let topCenterY = bounds.maxY + 20 // matches TextBoxAnnotation's handle offset
+        let dy = topCenterY - cy
+        let rad = rotation * .pi / 180
         let rotatedX = -dy * sin(rad) + cx
         let rotatedY = dy * cos(rad) + cy
         return CGPoint(x: rotatedX, y: rotatedY)

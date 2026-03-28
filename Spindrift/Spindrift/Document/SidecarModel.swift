@@ -101,11 +101,12 @@ struct TextBoxAnnotationModel: Codable, Equatable, Identifiable, Sendable {
     var backgroundColor: String? // hex color, nil = transparent
     var outlineColor: String? // hex color, nil = no outline
     var outlineStyle: OutlineStyle
+    var rotation: CGFloat // degrees
 
     init(id: UUID = UUID(), pageIndex: Int, bounds: AnnotationBounds, text: String = "Text",
          fontName: String = "Helvetica", fontSize: CGFloat = 14, color: String = "#000000",
          backgroundColor: String? = nil, outlineColor: String? = nil,
-         outlineStyle: OutlineStyle = .none) {
+         outlineStyle: OutlineStyle = .none, rotation: CGFloat = 0) {
         self.id = id
         self.pageIndex = pageIndex
         self.bounds = bounds
@@ -116,6 +117,28 @@ struct TextBoxAnnotationModel: Codable, Equatable, Identifiable, Sendable {
         self.backgroundColor = backgroundColor
         self.outlineColor = outlineColor
         self.outlineStyle = outlineStyle
+        self.rotation = rotation
+    }
+
+    // Backward-compatible decoding — rotation defaults to 0 if missing
+    enum CodingKeys: String, CodingKey {
+        case id, pageIndex, bounds, text, fontName, fontSize, color
+        case backgroundColor, outlineColor, outlineStyle, rotation
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        pageIndex = try c.decode(Int.self, forKey: .pageIndex)
+        bounds = try c.decode(AnnotationBounds.self, forKey: .bounds)
+        text = try c.decode(String.self, forKey: .text)
+        fontName = try c.decode(String.self, forKey: .fontName)
+        fontSize = try c.decode(CGFloat.self, forKey: .fontSize)
+        color = try c.decode(String.self, forKey: .color)
+        backgroundColor = try c.decodeIfPresent(String.self, forKey: .backgroundColor)
+        outlineColor = try c.decodeIfPresent(String.self, forKey: .outlineColor)
+        outlineStyle = try c.decode(OutlineStyle.self, forKey: .outlineStyle)
+        rotation = try c.decodeIfPresent(CGFloat.self, forKey: .rotation) ?? 0
     }
 }
 
