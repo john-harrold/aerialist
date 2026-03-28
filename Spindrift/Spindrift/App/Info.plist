@@ -11,6 +11,8 @@
 			<string>PDF Document</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
+			<key>CFBundleTypeIconFile</key>
+			<string>PDFDocIcon.icns</string>
 			<key>LSHandlerRank</key>
 			<string>Alternate</string>
 			<key>LSItemContentTypes</key>
@@ -23,6 +25,8 @@
 			<string>Spindrift Collection</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
+			<key>CFBundleTypeIconFile</key>
+			<string>CollectionDocIcon.icns</string>
 			<key>LSHandlerRank</key>
 			<string>Owner</string>
 			<key>LSItemContentTypes</key>
@@ -38,6 +42,8 @@
 			<string>com.spindrift.collection</string>
 			<key>UTTypeDescription</key>
 			<string>Spindrift Collection</string>
+			<key>UTTypeIconFile</key>
+			<string>CollectionDocIcon.icns</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.data</string>
