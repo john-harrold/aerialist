@@ -225,12 +225,34 @@ jobs:
             security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
           fi
 
+      - name: Create source archives
+        run: |
+          VERSION=$(date -u +"%Y.%m.%d")
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          PREFIX="Spindrift-nightly-${VERSION}-${SHORT_SHA}"
+
+          git archive --format=tar.gz --prefix="${PREFIX}/" HEAD > "build/${PREFIX}.tar.gz"
+          git archive --format=zip --prefix="${PREFIX}/" HEAD > "build/${PREFIX}.zip"
+
+          echo "SRC_TAR=build/${PREFIX}.tar.gz" >> "$GITHUB_ENV"
+          echo "SRC_ZIP=build/${PREFIX}.zip" >> "$GITHUB_ENV"
+
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.DMG_NAME }}
           path: ${{ env.DMG_PATH }}
           retention-days: 30
+
+      - name: Remove old release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Delete all existing assets from the nightly release
+          gh release view nightly --json assets --jq '.assets[].name' 2>/dev/null | while read -r asset; do
+            echo "Removing old asset: $asset"
+            gh release delete-asset nightly "$asset" -y
+          done
 
       - name: Update nightly release
         uses: softprops/action-gh-release@v2
@@ -244,7 +266,10 @@ jobs:
 
             This build is signed and notarized by Apple.
           prerelease: true
-          files: ${{ env.DMG_PATH }}
+          files: |
+            ${{ env.DMG_PATH }}
+            ${{ env.SRC_TAR }}
+            ${{ env.SRC_ZIP }}
           make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
