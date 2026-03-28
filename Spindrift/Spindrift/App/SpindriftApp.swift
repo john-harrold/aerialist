@@ -32,7 +32,7 @@ struct SpindriftApp: App {
 
     var body: some Scene {
         // Launcher window (shown on launch)
-        WindowGroup("Welcome to Spindrift", id: "launcher") {
+        WindowGroup("Spindrift PDF Tools", id: "launcher") {
             LauncherView()
         }
         .defaultSize(width: 500, height: 340)
@@ -44,7 +44,13 @@ struct SpindriftApp: App {
         }
         .commands {
             HelpCommands()
-            CommandGroup(after: .saveItem) {
+            CommandGroup(replacing: .saveItem) {
+                Button("Save") {
+                    // Temp files → Save As; otherwise trigger normal save
+                    NotificationCenter.default.post(name: .saveOrSaveAs, object: nil)
+                }
+                .keyboardShortcut("s", modifiers: .command)
+
                 Button("Save As...") {
                     NotificationCenter.default.post(name: .saveAs, object: nil)
                 }
@@ -94,6 +100,16 @@ struct SpindriftApp: App {
                     openFilePanel()
                 }
                 .keyboardShortcut("o", modifiers: .command)
+            }
+
+            CommandGroup(replacing: .printItem) {
+                Button("Print...") {
+                    NotificationCenter.default.post(
+                        name: .printDocument,
+                        object: nil
+                    )
+                }
+                .keyboardShortcut("p", modifiers: .command)
             }
 
             CommandGroup(after: .importExport) {
@@ -227,4 +243,6 @@ extension Notification.Name {
     static let tableSelect = Notification.Name("tableSelect")
     static let openCollection = Notification.Name("openCollection")
     static let saveAs = Notification.Name("saveAs")
+    static let printDocument = Notification.Name("printDocument")
+    static let saveOrSaveAs = Notification.Name("saveOrSaveAs")
 }

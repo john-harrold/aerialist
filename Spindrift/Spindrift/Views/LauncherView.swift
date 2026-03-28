@@ -7,16 +7,11 @@ struct LauncherView: View {
 
     var body: some View {
         VStack(spacing: 32) {
-            VStack(spacing: 8) {
-                Image(nsImage: NSApp.applicationIconImage)
-                    .resizable()
-                    .frame(width: 80, height: 80)
-                Text("Spindrift")
-                    .font(.largeTitle).bold()
-                Text("PDF Reader & Editor")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
+            Image("LandingBanner")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .frame(maxWidth: 480)
 
             HStack(spacing: 24) {
                 LauncherButton(
@@ -50,9 +45,10 @@ struct LauncherView: View {
             if ext == "pdfc" {
                 NotificationCenter.default.post(name: .openCollection, object: url)
             } else {
-                Task {
-                    try? await openDocument(at: url)
-                }
+                NSDocumentController.shared.openDocument(
+                    withContentsOf: url,
+                    display: true
+                ) { _, _, _ in }
             }
             dismissWindow(id: "launcher")
         }
